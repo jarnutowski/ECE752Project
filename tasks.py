@@ -77,3 +77,13 @@ def build_tests(c):
 def build(c):
     """Runs all build sub-tasks"""
 
+
+@task
+def test_square(c):
+    exec_path = f'{ROOT_DIR}/gem5/build/GCN3_X86/gem5.opt' 
+    conf_path = f'{ROOT_DIR}/gem5/configs/example/apu_se.py'
+    args = f'-n 2 --benchmark-root={ROOT_DIR}/gem5-resources/src/square/bin -c square.o'
+    _run(c, ' '.join([exec_path, conf_path, args]))
+
+
+
