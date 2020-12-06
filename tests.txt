@@ -1,0 +1,13 @@
+gem5-resources/src/square
+HIP-Examples/HIP-Examples-Applications/Histogram
+HIP-Examples/HIP-Examples-Applications/FastWalshTransform
+HIP-Examples/HIP-Examples-Applications/BitonicSort
+HIP-Examples/HIP-Examples-Applications/BinomialOption
+HIP-Examples/HIP-Examples-Applications/dct
+HIP-Examples/HIP-Examples-Applications/dwtHaar1D
+HIP-Examples/HIP-Examples-Applications/HelloWorld
+HIP-Examples/HIP-Examples-Applications/MatrixMultiplication
+HIP-Examples/HIP-Examples-Applications/PrefixSum
+HIP-Examples/HIP-Examples-Applications/RecursiveGaussian
+HIP-Examples/HIP-Examples-Applications/SimpleConvolution
+HIP-Examples/HIP-Examples-Applications/FloydWarshall
