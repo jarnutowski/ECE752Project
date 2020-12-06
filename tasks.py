@@ -111,12 +111,35 @@ def build(c):
 
 
 @task
-def test_square(c):
-    """Run the square test"""
+def test(c, index=0):
+    """Run a specific test, please specify index"""
     exec_path = f'{ROOT_DIR}/gem5/build/GCN3_X86/gem5.opt' 
     conf_path = f'{ROOT_DIR}/gem5/configs/example/apu_se.py'
-    args = f'-n 2 --benchmark-root={ROOT_DIR}/gem5-resources/src/square/bin -c square.o'
-    _run(c, ' '.join([exec_path, conf_path, args]))
+    test_dir = TEST_PATHS[index]
+    print(f'Testing {test_dir}...')
+    
+    # Try to find executable
+    try_paths = [os.path.basename(test_dir), os.path.basename(test_dir) + '.o']
+    try_paths = [[ex, os.path.join('bin', ex)] for ex in try_paths]
+    try_paths = [ex for t in try_paths for ex in t]
+    for ex in try_paths:
+        if os.path.isfile(os.path.join(ROOT_DIR, test_dir, ex)):
+            print(f'  Found executable {ex}.')
+            break
+    else:
+        raise RuntimeError(f'Executable for {test_dir} not found!')
+    
+
+    args = f'-n 2 --benchmark-root={test_dir}/{os.path.dirname(ex)} -c {os.path.basename(ex)}'
+    _run(c, ' '.join([exec_path, f'-d runs/{os.path.basename(ex).split(".")[0]}', conf_path, args]))
 
 
+@task
+def tests(c):
+    """Run all tests in tests.txt"""
+    results = [test(c, i) for i, test_path in enumerate(TEST_PATHS)]
+    print('\n\n\n############## SUMMARY ##############')
+    for i, test_path in enumerate(TEST_PATHS):
+        print(i, test_path, 'PASSED' if result[i] == 0 else 'FAILED')
+        
 
