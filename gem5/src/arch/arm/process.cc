@@ -58,17 +58,17 @@
 using namespace std;
 using namespace ArmISA;
 
-ArmProcess::ArmProcess(ProcessParams *params, ::Loader::ObjectFile *objFile,
-                       ::Loader::Arch _arch)
+ArmProcess::ArmProcess(const ProcessParams &params,
+                       ::Loader::ObjectFile *objFile, ::Loader::Arch _arch)
     : Process(params,
-              new EmulationPageTable(params->name, params->pid, PageBytes),
+              new EmulationPageTable(params.name, params.pid, PageBytes),
               objFile),
       arch(_arch)
 {
-    fatal_if(params->useArchPT, "Arch page tables not implemented.");
+    fatal_if(params.useArchPT, "Arch page tables not implemented.");
 }
 
-ArmProcess32::ArmProcess32(ProcessParams *params,
+ArmProcess32::ArmProcess32(const ProcessParams &params,
         ::Loader::ObjectFile *objFile, ::Loader::Arch _arch)
     : ArmProcess(params, objFile, _arch)
 {
@@ -84,7 +84,7 @@ ArmProcess32::ArmProcess32(ProcessParams *params,
 }
 
 ArmProcess64::ArmProcess64(
-        ProcessParams *params, ::Loader::ObjectFile *objFile,
+        const ProcessParams &params, ::Loader::ObjectFile *objFile,
         ::Loader::Arch _arch)
     : ArmProcess(params, objFile, _arch)
 {
@@ -472,11 +472,3 @@ ArmProcess::argsInit(int pageSize, IntRegIndex spIndex)
     //Align the "stackMin" to a page boundary.
     memState->setStackMin(roundDown(memState->getStackMin(), pageSize));
 }
-
-const std::vector<int> ArmProcess32::SyscallABI::ArgumentRegs = {
-    0, 1, 2, 3, 4, 5, 6
-};
-
-const std::vector<int> ArmProcess64::SyscallABI::ArgumentRegs = {
-    0, 1, 2, 3, 4, 5, 6
-};

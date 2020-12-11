@@ -42,8 +42,8 @@
 #include "arch/arm/faults.hh"
 #include "arch/arm/interrupts.hh"
 #include "arch/arm/isa_traits.hh"
+#include "arch/arm/mmu.hh"
 #include "arch/arm/system.hh"
-#include "arch/arm/tlb.hh"
 #include "cpu/base.hh"
 #include "cpu/checker/cpu.hh"
 #include "cpu/thread_context.hh"
@@ -56,13 +56,10 @@ namespace ArmISA
 uint64_t
 getArgument(ThreadContext *tc, int &number, uint16_t size, bool fp)
 {
-    if (!FullSystem) {
-        panic("getArgument() only implemented for full system mode.\n");
-        M5_DUMMY_RETURN
-    }
+    panic_if(!FullSystem,
+            "getArgument() only implemented for full system mode.");
 
-    if (fp)
-        panic("getArgument(): Floating point arguments not implemented\n");
+    panic_if(fp, "getArgument(): Floating point arguments not implemented");
 
     if (inAArch64(tc)) {
         if (size == (uint16_t)(-1))
@@ -157,8 +154,7 @@ copyRegs(ThreadContext *src, ThreadContext *dest)
     dest->pcState(src->pcState());
 
     // Invalidate the tlb misc register cache
-    dynamic_cast<TLB *>(dest->getITBPtr())->invalidateMiscReg();
-    dynamic_cast<TLB *>(dest->getDTBPtr())->invalidateMiscReg();
+    static_cast<MMU *>(dest->getMMUPtr())->invalidateMiscReg();
 }
 
 void
@@ -327,6 +323,13 @@ HaveVirtHostExt(ThreadContext *tc)
 {
     AA64MMFR1 id_aa64mmfr1 = tc->readMiscReg(MISCREG_ID_AA64MMFR1_EL1);
     return id_aa64mmfr1.vh;
+}
+
+bool
+HaveLVA(ThreadContext *tc)
+{
+    const AA64MMFR2 mm_fr2 = tc->readMiscReg(MISCREG_ID_AA64MMFR2_EL1);
+    return (bool)mm_fr2.varange;
 }
 
 ExceptionLevel
@@ -656,12 +659,14 @@ mcrMrc15TrapToHyp(const MiscRegIndex miscReg, ThreadContext *tc, uint32_t iss,
               case MISCREG_ID_MMFR1:
               case MISCREG_ID_MMFR2:
               case MISCREG_ID_MMFR3:
+              case MISCREG_ID_MMFR4:
               case MISCREG_ID_ISAR0:
               case MISCREG_ID_ISAR1:
               case MISCREG_ID_ISAR2:
               case MISCREG_ID_ISAR3:
               case MISCREG_ID_ISAR4:
               case MISCREG_ID_ISAR5:
+              case MISCREG_ID_ISAR6:
                 trapToHype = hcr.tid3;
                 break;
               case MISCREG_DCISW:
@@ -1392,9 +1397,9 @@ decodePhysAddrRange64(uint8_t pa_enc)
       case 0x4:
         return 44;
       case 0x5:
-      case 0x6:
-      case 0x7:
         return 48;
+      case 0x6:
+        return 52;
       default:
         panic("Invalid phys. address range encoding");
     }
@@ -1416,6 +1421,8 @@ encodePhysAddrRange64(int pa_size)
         return 0x4;
       case 48:
         return 0x5;
+      case 52:
+        return 0x6;
       default:
         panic("Invalid phys. address range");
     }

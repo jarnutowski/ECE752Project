@@ -95,6 +95,8 @@ process.cmd = [binpath]
 system.cpu.workload = process
 system.cpu.createThreads()
 
+system.workload = SEWorkload.init_compatible(binpath)
+
 # set up the root SimObject and start the simulation
 root = Root(full_system = False, system = system)
 # instantiate all of the objects we've created above

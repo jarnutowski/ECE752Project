@@ -142,7 +142,7 @@ def template SveContigLoadExecute {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<RegElemType>(
             xc->tcBase());
 
@@ -155,8 +155,8 @@ def template SveContigLoadExecute {{
 
         %(rden_code)s;
 
-        fault = xc->readMem(EA, memData.raw_ptr<uint8_t>(), memAccessSize,
-            this->memAccessFlags, rdEn);
+        fault = readMemAtomic(xc, EA, memData.raw_ptr<uint8_t>(),
+            memAccessSize, this->memAccessFlags, rdEn);
 
         %(fault_code)s;
 
@@ -176,7 +176,7 @@ def template SveContigLoadInitiateAcc {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<RegElemType>(
             xc->tcBase());
 
@@ -186,8 +186,8 @@ def template SveContigLoadInitiateAcc {{
 
         %(rden_code)s;
 
-        fault = xc->initiateMemRead(EA, memAccessSize, this->memAccessFlags,
-            rdEn);
+        fault = initiateMemRead(xc, EA, memAccessSize,
+            this->memAccessFlags, rdEn);
 
         %(fault_code)s;
 
@@ -200,7 +200,7 @@ def template SveContigLoadCompleteAcc {{
     Fault %(class_name)s%(tpl_args)s::completeAcc(PacketPtr pkt,
         ExecContext *xc, Trace::InstRecord *traceData) const
     {
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<RegElemType>(
             xc->tcBase());
 
@@ -229,7 +229,7 @@ def template SveContigStoreExecute {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<RegElemType>(
             xc->tcBase());
 
@@ -247,8 +247,8 @@ def template SveContigStoreExecute {{
         }
 
         if (fault == NoFault) {
-            fault = xc->writeMem(memData.raw_ptr<uint8_t>(), memAccessSize, EA,
-                this->memAccessFlags, NULL, wrEn);
+            fault = writeMemAtomic(xc, memData.raw_ptr<uint8_t>(),
+                EA, memAccessSize, this->memAccessFlags, NULL, wrEn);
         }
 
         if (fault == NoFault) {
@@ -266,7 +266,7 @@ def template SveContigStoreInitiateAcc {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<RegElemType>(
             xc->tcBase());
 
@@ -284,8 +284,8 @@ def template SveContigStoreInitiateAcc {{
         }
 
         if (fault == NoFault) {
-            fault = xc->writeMem(memData.raw_ptr<uint8_t>(), memAccessSize, EA,
-                this->memAccessFlags, NULL, wrEn);
+            fault = writeMemTiming(xc, memData.raw_ptr<uint8_t>(),
+                EA, memAccessSize, this->memAccessFlags, NULL, wrEn);
         }
 
         return fault;
@@ -308,7 +308,7 @@ def template SveLoadAndReplExecute {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<RegElemType>(
             xc->tcBase());
 
@@ -339,7 +339,7 @@ def template SveLoadAndReplInitiateAcc {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
 
         %(op_src_decl)s;
         %(op_rd)s;
@@ -363,7 +363,7 @@ def template SveLoadAndReplCompleteAcc {{
         ExecContext *xc, Trace::InstRecord *traceData) const
     {
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<RegElemType>(
             xc->tcBase());
 
@@ -419,8 +419,11 @@ def template SveIndexedMemVIMicroopDeclare {{
                 // The first micro-op is responsible for pinning the
                 // destination and the fault status registers
                 assert(_numDestRegs == 2);
-               _destRegIdx[0].setNumPinnedWrites(numElems - 1);
-               _destRegIdx[1].setNumPinnedWrites(numElems - 1);
+                for (int i = 0; i < _numDestRegs; i++) {
+                    auto dr = destRegIdx(i);
+                    dr.setNumPinnedWrites(numElems - 1);
+                    setDestRegIdx(i, dr);
+                }
             }
         }
 
@@ -500,8 +503,11 @@ def template SveIndexedMemSVMicroopDeclare {{
                 // The first micro-op is responsible for pinning the
                 // destination and the fault status registers
                 assert(_numDestRegs == 2);
-               _destRegIdx[0].setNumPinnedWrites(numElems - 1);
-               _destRegIdx[1].setNumPinnedWrites(numElems - 1);
+                for (int i = 0; i < _numDestRegs; i++) {
+                    auto dr = destRegIdx(i);
+                    dr.setNumPinnedWrites(numElems - 1);
+                    setDestRegIdx(i, dr);
+                }
             }
         }
 
@@ -547,7 +553,7 @@ def template SveGatherLoadMicroopExecute {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
 
         %(op_decl)s;
         %(op_rd)s;
@@ -595,7 +601,7 @@ def template SveGatherLoadMicroopInitiateAcc {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
 
         %(op_src_decl)s;
         %(op_rd)s;
@@ -635,7 +641,7 @@ def template SveGatherLoadMicroopCompleteAcc {{
     Fault %(class_name)s%(tpl_args)s::completeAcc(PacketPtr pkt,
         ExecContext *xc, Trace::InstRecord *traceData) const
     {
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
 
         %(op_decl)s;
         %(op_rd)s;
@@ -661,7 +667,7 @@ def template SveScatterStoreMicroopExecute {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
 
         %(op_decl)s;
         %(op_rd)s;
@@ -691,7 +697,7 @@ def template SveScatterStoreMicroopInitiateAcc {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
 
         %(op_decl)s;
         %(op_rd)s;
@@ -759,7 +765,7 @@ def template SveFirstFaultWritebackMicroopExecute {{
     Fault %(class_name)s%(tpl_args)s::execute(ExecContext *xc,
         Trace::InstRecord *traceData) const
     {
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
 
         %(op_decl)s;
         %(op_rd)s;
@@ -933,7 +939,7 @@ def template SveStructLoadExecute {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<Element>(
             xc->tcBase());
 
@@ -945,8 +951,9 @@ def template SveStructLoadExecute {{
         auto memDataView = memData.as<Element>();
 
         if (fault == NoFault) {
-            fault = xc->readMem(EA, memData.raw_ptr<uint8_t>(), memAccessSize,
-                this->memAccessFlags);
+            fault = readMemAtomic(xc, EA, memData.raw_ptr<uint8_t>(),
+                memAccessSize, this->memAccessFlags,
+                std::vector<bool>(memAccessSize, true));
             %(memacc_code)s;
         }
 
@@ -965,7 +972,7 @@ def template SveStructLoadInitiateAcc {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<Element>(
             xc->tcBase());
 
@@ -975,8 +982,9 @@ def template SveStructLoadInitiateAcc {{
         %(ea_code)s;
 
         if (fault == NoFault) {
-            fault = xc->initiateMemRead(EA, memAccessSize,
-                this->memAccessFlags);
+            fault = initiateMemRead(xc, EA,
+                memAccessSize, this->memAccessFlags,
+                std::vector<bool>(memAccessSize, true));
         }
 
         return fault;
@@ -989,7 +997,7 @@ def template SveStructLoadCompleteAcc {{
         ExecContext *xc, Trace::InstRecord *traceData) const
     {
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<Element>(
             xc->tcBase());
 
@@ -1021,7 +1029,7 @@ def template SveStructStoreExecute {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<Element>(
             xc->tcBase());
 
@@ -1039,8 +1047,8 @@ def template SveStructStoreExecute {{
         }
 
         if (fault == NoFault) {
-            fault = xc->writeMem(memData.raw_ptr<uint8_t>(), memAccessSize, EA,
-                this->memAccessFlags, NULL, wrEn);
+            fault = writeMemAtomic(xc, memData.raw_ptr<uint8_t>(),
+                EA, memAccessSize, this->memAccessFlags, NULL, wrEn);
         }
 
         if (fault == NoFault) {
@@ -1058,7 +1066,7 @@ def template SveStructStoreInitiateAcc {{
     {
         Addr EA;
         Fault fault = NoFault;
-        bool aarch64 M5_VAR_USED = true;
+        M5_VAR_USED bool aarch64 = true;
         unsigned eCount = ArmStaticInst::getCurSveVecLen<Element>(
             xc->tcBase());
 
@@ -1076,8 +1084,8 @@ def template SveStructStoreInitiateAcc {{
         }
 
         if (fault == NoFault) {
-            fault = xc->writeMem(memData.raw_ptr<uint8_t>(), memAccessSize, EA,
-                this->memAccessFlags, NULL, wrEn);
+            fault = writeMemTiming(xc, memData.raw_ptr<uint8_t>(),
+                EA, memAccessSize, this->memAccessFlags, NULL, wrEn);
         }
 
         return fault;

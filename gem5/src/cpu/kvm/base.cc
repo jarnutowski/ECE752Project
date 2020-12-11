@@ -59,13 +59,13 @@
 /* Used by some KVM macros */
 #define PAGE_SIZE pageSize
 
-BaseKvmCPU::BaseKvmCPU(BaseKvmCPUParams *params)
+BaseKvmCPU::BaseKvmCPU(const BaseKvmCPUParams &params)
     : BaseCPU(params),
-      vm(*params->system->getKvmVM()),
+      vm(*params.system->getKvmVM()),
       _status(Idle),
       dataPort(name() + ".dcache_port", this),
       instPort(name() + ".icache_port", this),
-      alwaysSyncTC(params->alwaysSyncTC),
+      alwaysSyncTC(params.alwaysSyncTC),
       threadContextDirty(true),
       kvmStateDirty(false),
       vcpuID(vm.allocVCPUID()), vcpuFD(-1), vcpuMMapSize(0),
@@ -74,8 +74,8 @@ BaseKvmCPU::BaseKvmCPU(BaseKvmCPUParams *params)
       tickEvent([this]{ tick(); }, "BaseKvmCPU tick",
                 false, Event::CPU_Tick_Pri),
       activeInstPeriod(0),
-      perfControlledByTimer(params->usePerfOverflow),
-      hostFactor(params->hostFactor), stats(this),
+      perfControlledByTimer(params.usePerfOverflow),
+      hostFactor(params.hostFactor), stats(this),
       ctrInsts(0)
 {
     if (pageSize == -1)
@@ -83,12 +83,12 @@ BaseKvmCPU::BaseKvmCPU(BaseKvmCPUParams *params)
               errno);
 
     if (FullSystem)
-        thread = new SimpleThread(this, 0, params->system, params->itb, params->dtb,
-                                  params->isa[0]);
+        thread = new SimpleThread(this, 0, params.system, params.mmu,
+                                  params.isa[0]);
     else
-        thread = new SimpleThread(this, /* thread_num */ 0, params->system,
-                                  params->workload[0], params->itb,
-                                  params->dtb, params->isa[0]);
+        thread = new SimpleThread(this, /* thread_num */ 0, params.system,
+                                  params.workload[0], params.mmu,
+                                  params.isa[0]);
 
     thread->setStatus(ThreadContext::Halted);
     tc = thread->getTC();
@@ -116,8 +116,8 @@ BaseKvmCPU::init()
 void
 BaseKvmCPU::startup()
 {
-    const BaseKvmCPUParams * const p(
-        dynamic_cast<const BaseKvmCPUParams *>(params()));
+    const BaseKvmCPUParams &p =
+        dynamic_cast<const BaseKvmCPUParams &>(params());
 
     Kvm &kvm(*vm.kvm);
 
@@ -133,7 +133,7 @@ BaseKvmCPU::startup()
     // point. Initialize virtual CPUs here instead.
     vcpuFD = vm.createVCPU(vcpuID);
 
-    // Map the KVM run structure */
+    // Map the KVM run structure
     vcpuMMapSize = kvm.getVCPUMMapSize();
     _kvmRun = (struct kvm_run *)mmap(0, vcpuMMapSize,
                                      PROT_READ | PROT_WRITE, MAP_SHARED,
@@ -145,7 +145,7 @@ BaseKvmCPU::startup()
     // available. The offset into the KVM's communication page is
     // provided by the coalesced MMIO capability.
     int mmioOffset(kvm.capCoalescedMMIO());
-    if (!p->useCoalescedMMIO) {
+    if (!p.useCoalescedMMIO) {
         inform("KVM: Coalesced MMIO disabled by config.\n");
     } else if (mmioOffset) {
         inform("KVM: Coalesced IO available\n");
@@ -235,8 +235,8 @@ BaseKvmCPU::startupThread()
     // delivery for counters and timers from within the thread that
     // will execute the event queue to ensure that signals are
     // delivered to the right threads.
-    const BaseKvmCPUParams * const p(
-        dynamic_cast<const BaseKvmCPUParams *>(params()));
+    const BaseKvmCPUParams &p =
+        dynamic_cast<const BaseKvmCPUParams &>(params());
 
     vcpuThread = pthread_self();
 
@@ -246,16 +246,16 @@ BaseKvmCPU::startupThread()
 
     setupCounters();
 
-    if (p->usePerfOverflow)
+    if (p.usePerfOverflow) {
         runTimer.reset(new PerfKvmTimer(hwCycles,
                                         KVM_KICK_SIGNAL,
-                                        p->hostFactor,
-                                        p->hostFreq));
-    else
+                                        p.hostFactor,
+                                        p.hostFreq));
+    } else {
         runTimer.reset(new PosixKvmTimer(KVM_KICK_SIGNAL, CLOCK_MONOTONIC,
-                                         p->hostFactor,
-                                         p->hostFreq));
-
+                                         p.hostFactor,
+                                         p.hostFreq));
+    }
 }
 
 BaseKvmCPU::StatGroup::StatGroup(Stats::Group *parent)
@@ -491,7 +491,8 @@ BaseKvmCPU::activateContext(ThreadID thread_num)
     assert(_status == Idle);
     assert(!tickEvent.scheduled());
 
-    numCycles += ticksToCycles(thread->lastActivate - thread->lastSuspend);
+    baseStats.numCycles +=
+        ticksToCycles(thread->lastActivate - thread->lastSuspend);
 
     schedule(tickEvent, clockEdge(Cycles(0)));
     _status = Running;
@@ -762,10 +763,9 @@ BaseKvmCPU::kvmRun(Tick ticks)
         ticksExecuted = runTimer->ticksFromHostCycles(hostCyclesExecuted);
 
         /* Update statistics */
-        numCycles += simCyclesExecuted;;
+        baseStats.numCycles += simCyclesExecuted;;
         stats.committedInsts += instsExecuted;
         ctrInsts += instsExecuted;
-        system->totalNumInsts += instsExecuted;
 
         DPRINTF(KvmRun,
                 "KVM: Executed %i instructions in %i cycles "
@@ -1081,7 +1081,7 @@ BaseKvmCPU::doMMIOAccess(Addr paddr, void *data, int size, bool write)
     // APIC accesses on x86 and m5ops where supported through a MMIO
     // interface.
     BaseTLB::Mode tlb_mode(write ? BaseTLB::Write : BaseTLB::Read);
-    Fault fault(tc->getDTBPtr()->finalizePhysical(mmio_req, tc, tlb_mode));
+    Fault fault(tc->getMMUPtr()->finalizePhysical(mmio_req, tc, tlb_mode));
     if (fault != NoFault)
         warn("Finalization of MMIO address failed: %s\n", fault->name());
 

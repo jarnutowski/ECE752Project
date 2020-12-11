@@ -74,7 +74,7 @@ TimingSimpleCPU::TimingCPUPort::TickEvent::schedule(PacketPtr _pkt, Tick t)
     cpu->schedule(this, t);
 }
 
-TimingSimpleCPU::TimingSimpleCPU(TimingSimpleCPUParams *p)
+TimingSimpleCPU::TimingSimpleCPU(const TimingSimpleCPUParams &p)
     : BaseSimpleCPU(p), fetchTranslation(this), icachePort(this),
       dcachePort(this), ifetch_pkt(NULL), dcache_pkt(NULL), previousCycle(0),
       fetchEvent([this]{ fetch(); }, name())
@@ -131,7 +131,7 @@ TimingSimpleCPU::drainResume()
 
     for (ThreadID tid = 0; tid < numThreads; tid++) {
         if (threadInfo[tid]->thread->status() == ThreadContext::Active) {
-            threadInfo[tid]->notIdleFraction = 1;
+            threadInfo[tid]->execContextStats.notIdleFraction = 1;
 
             activeThreads.push_back(tid);
 
@@ -142,14 +142,12 @@ TimingSimpleCPU::drainResume()
                 schedule(fetchEvent, nextCycle());
             }
         } else {
-            threadInfo[tid]->notIdleFraction = 0;
+            threadInfo[tid]->execContextStats.notIdleFraction = 0;
         }
     }
 
     // Reschedule any power gating event (if any)
     schedulePowerGatingEvent();
-
-    system->totalNumInsts = 0;
 }
 
 bool
@@ -214,7 +212,7 @@ TimingSimpleCPU::activateContext(ThreadID thread_num)
 
     assert(thread_num < numThreads);
 
-    threadInfo[thread_num]->notIdleFraction = 1;
+    threadInfo[thread_num]->execContextStats.notIdleFraction = 1;
     if (_status == BaseSimpleCPU::Idle)
         _status = BaseSimpleCPU::Running;
 
@@ -248,7 +246,7 @@ TimingSimpleCPU::suspendContext(ThreadID thread_num)
 
     assert(_status == BaseSimpleCPU::Running);
 
-    threadInfo[thread_num]->notIdleFraction = 0;
+    threadInfo[thread_num]->execContextStats.notIdleFraction = 0;
 
     if (activeThreads.empty()) {
         _status = Idle;
@@ -467,9 +465,7 @@ TimingSimpleCPU::initiateMemRead(Addr addr, unsigned size,
 
     RequestPtr req = std::make_shared<Request>(
         addr, size, flags, dataRequestorId(), pc, thread->contextId());
-    if (!byte_enable.empty()) {
-        req->setByteEnable(byte_enable);
-    }
+    req->setByteEnable(byte_enable);
 
     req->taskId(taskId());
 
@@ -490,14 +486,14 @@ TimingSimpleCPU::initiateMemRead(Addr addr, unsigned size,
         DataTranslation<TimingSimpleCPU *> *trans2 =
             new DataTranslation<TimingSimpleCPU *>(this, state, 1);
 
-        thread->dtb->translateTiming(req1, thread->getTC(), trans1, mode);
-        thread->dtb->translateTiming(req2, thread->getTC(), trans2, mode);
+        thread->mmu->translateTiming(req1, thread->getTC(), trans1, mode);
+        thread->mmu->translateTiming(req2, thread->getTC(), trans2, mode);
     } else {
         WholeTranslationState *state =
             new WholeTranslationState(req, new uint8_t[size], NULL, mode);
         DataTranslation<TimingSimpleCPU *> *translation
             = new DataTranslation<TimingSimpleCPU *>(this, state);
-        thread->dtb->translateTiming(req, thread->getTC(), translation, mode);
+        thread->mmu->translateTiming(req, thread->getTC(), translation, mode);
     }
 
     return NoFault;
@@ -551,9 +547,7 @@ TimingSimpleCPU::writeMem(uint8_t *data, unsigned size,
 
     RequestPtr req = std::make_shared<Request>(
         addr, size, flags, dataRequestorId(), pc, thread->contextId());
-    if (!byte_enable.empty()) {
-        req->setByteEnable(byte_enable);
-    }
+    req->setByteEnable(byte_enable);
 
     req->taskId(taskId());
 
@@ -577,14 +571,14 @@ TimingSimpleCPU::writeMem(uint8_t *data, unsigned size,
         DataTranslation<TimingSimpleCPU *> *trans2 =
             new DataTranslation<TimingSimpleCPU *>(this, state, 1);
 
-        thread->dtb->translateTiming(req1, thread->getTC(), trans1, mode);
-        thread->dtb->translateTiming(req2, thread->getTC(), trans2, mode);
+        thread->mmu->translateTiming(req1, thread->getTC(), trans1, mode);
+        thread->mmu->translateTiming(req2, thread->getTC(), trans2, mode);
     } else {
         WholeTranslationState *state =
             new WholeTranslationState(req, newData, res, mode);
         DataTranslation<TimingSimpleCPU *> *translation =
             new DataTranslation<TimingSimpleCPU *>(this, state);
-        thread->dtb->translateTiming(req, thread->getTC(), translation, mode);
+        thread->mmu->translateTiming(req, thread->getTC(), translation, mode);
     }
 
     // Translation faults will be returned via finishTranslation()
@@ -634,7 +628,7 @@ TimingSimpleCPU::initiateMemAMO(Addr addr, unsigned size,
         new WholeTranslationState(req, new uint8_t[size], NULL, mode);
     DataTranslation<TimingSimpleCPU *> *translation
         = new DataTranslation<TimingSimpleCPU *>(this, state);
-    thread->dtb->translateTiming(req, thread->getTC(), translation, mode);
+    thread->mmu->translateTiming(req, thread->getTC(), translation, mode);
 
     return NoFault;
 }
@@ -710,7 +704,7 @@ TimingSimpleCPU::fetch()
         ifetch_req->setContext(thread->contextId());
         setupFetchRequest(ifetch_req);
         DPRINTF(SimpleCPU, "Translating address %#x\n", ifetch_req->getVaddr());
-        thread->itb->translateTiming(ifetch_req, thread->getTC(),
+        thread->mmu->translateTiming(ifetch_req, thread->getTC(),
                 &fetchTranslation, BaseTLB::Execute);
     } else {
         _status = IcacheWaitResponse;
@@ -947,7 +941,7 @@ TimingSimpleCPU::completeDataAccess(PacketPtr pkt)
     // hardware transactional memory
 
     SimpleExecContext *t_info = threadInfo[curThread];
-    const bool is_htm_speculative M5_VAR_USED =
+    M5_VAR_USED const bool is_htm_speculative =
         t_info->inHtmTransactionalState();
 
     // received a response from the dcache: complete the load or store
@@ -1082,7 +1076,7 @@ TimingSimpleCPU::updateCycleCounts()
 {
     const Cycles delta(curCycle() - previousCycle);
 
-    numCycles += delta;
+    baseStats.numCycles += delta;
 
     previousCycle = curCycle();
 }
@@ -1293,15 +1287,4 @@ TimingSimpleCPU::htmSendAbortSignal(HtmFailureFaultCause cause)
     memcpy (data, &rc, size);
 
     sendData(req, data, nullptr, true);
-}
-
-
-////////////////////////////////////////////////////////////////////////
-//
-//  TimingSimpleCPU Simulation Object
-//
-TimingSimpleCPU *
-TimingSimpleCPUParams::create()
-{
-    return new TimingSimpleCPU(this);
 }

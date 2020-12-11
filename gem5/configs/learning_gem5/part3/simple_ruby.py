@@ -99,6 +99,8 @@ for cpu in system.cpu:
     cpu.workload = process
     cpu.createThreads()
 
+system.workload = SEWorkload.init_compatible(binary)
+
 # Set up the pseudo file system for the threads function above
 config_filesystem(system)
 

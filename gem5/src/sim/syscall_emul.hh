@@ -1094,7 +1094,7 @@ mremapFunc(SyscallDesc *desc, ThreadContext *tc,
         GuestABI::VarArgs<uint64_t> varargs)
 {
     auto p = tc->getProcessPtr();
-    Addr page_bytes = tc->getSystemPtr()->getPageBytes();
+    Addr page_bytes = p->pTable->pageSize();
     uint64_t provided_address = 0;
     bool use_provided_address = flags & OS::TGT_MREMAP_FIXED;
 
@@ -1480,6 +1480,8 @@ cloneFunc(SyscallDesc *desc, ThreadContext *tc, RegVal flags, RegVal newStack,
         cp->pTable->shared = true;
         cp->useForClone = true;
     }
+
+    ctc->setUseForClone(true);
     cp->initState();
     p->clone(tc, ctc, cp, flags);
 
@@ -1505,11 +1507,6 @@ cloneFunc(SyscallDesc *desc, ThreadContext *tc, RegVal flags, RegVal newStack,
     OS::archClone(flags, p, cp, tc, ctc, newStack, tlsPtr);
 
     desc->returnInto(ctc, 0);
-
-#if THE_ISA == SPARC_ISA
-    tc->setIntReg(TheISA::SyscallPseudoReturnReg, 0);
-    ctc->setIntReg(TheISA::SyscallPseudoReturnReg, 1);
-#endif
 
     TheISA::PCState cpc = tc->pcState();
     if (!p->kvmInSE)
@@ -1631,7 +1628,7 @@ mmapFunc(SyscallDesc *desc, ThreadContext *tc,
          int tgt_flags, int tgt_fd, typename OS::off_t offset)
 {
     auto p = tc->getProcessPtr();
-    Addr page_bytes = tc->getSystemPtr()->getPageBytes();
+    Addr page_bytes = p->pTable->pageSize();
 
     if (start & (page_bytes - 1) ||
         offset & (page_bytes - 1) ||
@@ -1814,8 +1811,9 @@ mmap2Func(SyscallDesc *desc, ThreadContext *tc,
           Addr start, typename OS::size_t length, int prot,
           int tgt_flags, int tgt_fd, typename OS::off_t offset)
 {
+    auto page_size = tc->getProcessPtr()->pTable->pageSize();
     return mmapFunc<OS>(desc, tc, start, length, prot, tgt_flags,
-                        tgt_fd, offset * tc->getSystemPtr()->getPageBytes());
+                        tgt_fd, offset * page_size);
 }
 
 /// Target getrlimit() handler.

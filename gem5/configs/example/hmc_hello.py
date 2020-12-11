@@ -76,6 +76,8 @@ binary = 'tests/test-progs/hello/bin/' + isa + '/linux/hello'
 process = Process()
 # cmd is a list which begins with the executable (like argv)
 process.cmd = [binary]
+# set the system workload
+system.workload = SEWorkload.init_compatible(binary)
 # set the cpu workload
 system.cpu.workload = process
 # create thread contexts

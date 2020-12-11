@@ -45,8 +45,8 @@
 #include "params/VoltageDomain.hh"
 #include "sim/sim_object.hh"
 
-VoltageDomain::VoltageDomain(const Params *p)
-    : SimObject(p), voltageOpPoints(p->voltage), _perfLevel(0), stats(*this)
+VoltageDomain::VoltageDomain(const Params &p)
+    : SimObject(p), voltageOpPoints(p.voltage), _perfLevel(0), stats(*this)
 {
     fatal_if(voltageOpPoints.empty(), "DVFS: Empty set of voltages for "\
              "voltage domain %s\n", name());
@@ -122,12 +122,6 @@ VoltageDomain::startup() {
         warn("DVFS: Perf level for voltage domain %s adapted to "\
              "requested perf levels from source clock domains.\n", name());
     }
-}
-
-VoltageDomain *
-VoltageDomainParams::create()
-{
-    return new VoltageDomain(this);
 }
 
 void

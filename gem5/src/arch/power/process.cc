@@ -47,12 +47,12 @@ using namespace std;
 using namespace PowerISA;
 
 PowerProcess::PowerProcess(
-        ProcessParams *params, ::Loader::ObjectFile *objFile)
+       const ProcessParams &params, ::Loader::ObjectFile *objFile)
     : Process(params,
-              new EmulationPageTable(params->name, params->pid, PageBytes),
+              new EmulationPageTable(params.name, params.pid, PageBytes),
               objFile)
 {
-    fatal_if(params->useArchPT, "Arch page tables not implemented.");
+    fatal_if(params.useArchPT, "Arch page tables not implemented.");
     // Set up break point (Top of Heap)
     Addr brk_point = image.maxAddr();
     brk_point = roundUp(brk_point, PageBytes);
@@ -277,7 +277,3 @@ PowerProcess::argsInit(int intSize, int pageSize)
     //Align the "stack_min" to a page boundary.
     memState->setStackMin(roundDown(stack_min, pageSize));
 }
-
-const std::vector<int> PowerProcess::SyscallABI::ArgumentRegs = {
-    3, 4, 5, 6, 7, 8
-};

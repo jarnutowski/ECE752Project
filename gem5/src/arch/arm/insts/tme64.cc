@@ -83,7 +83,6 @@ MicroTfence64::MicroTfence64(ExtMachInst machInst)
     _numVecElemDestRegs = 0;
     _numIntDestRegs = 0;
     _numCCDestRegs = 0;
-    flags[IsMemBarrier] = true;
     flags[IsMicroop] = true;
     flags[IsReadBarrier] = true;
     flags[IsWriteBarrier] = true;
@@ -124,12 +123,11 @@ Tstart64::Tstart64(ExtMachInst machInst, IntRegIndex _dest)
     _numVecElemDestRegs = 0;
     _numIntDestRegs = 0;
     _numCCDestRegs = 0;
-    _destRegIdx[_numDestRegs++] = RegId(IntRegClass, dest);
+    setDestRegIdx(_numDestRegs++, RegId(IntRegClass, dest));
     _numIntDestRegs++;
     flags[IsHtmStart] = true;
     flags[IsInteger] = true;
     flags[IsLoad] = true;
-    flags[IsMemRef] = true;
     flags[IsMicroop] = true;
     flags[IsNonSpeculative] = true;
 }
@@ -153,7 +151,7 @@ Ttest64::Ttest64(ExtMachInst machInst, IntRegIndex _dest)
     _numVecElemDestRegs = 0;
     _numIntDestRegs = 0;
     _numCCDestRegs = 0;
-    _destRegIdx[_numDestRegs++] = RegId(IntRegClass, dest);
+    setDestRegIdx(_numDestRegs++, RegId(IntRegClass, dest));
     _numIntDestRegs++;
     flags[IsInteger] = true;
     flags[IsMicroop] = true;
@@ -170,7 +168,6 @@ Tcancel64::Tcancel64(ExtMachInst machInst, uint64_t _imm)
     _numIntDestRegs = 0;
     _numCCDestRegs = 0;
     flags[IsLoad] = true;
-    flags[IsMemRef] = true;
     flags[IsMicroop] = true;
     flags[IsNonSpeculative] = true;
     flags[IsHtmCancel] = true;
@@ -213,7 +210,6 @@ MicroTcommit64::MicroTcommit64(ExtMachInst machInst)
     _numCCDestRegs = 0;
     flags[IsHtmStop] = true;
     flags[IsLoad] = true;
-    flags[IsMemRef] = true;
     flags[IsMicroop] = true;
     flags[IsNonSpeculative] = true;
 }

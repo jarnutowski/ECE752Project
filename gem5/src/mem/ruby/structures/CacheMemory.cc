@@ -62,27 +62,21 @@ operator<<(ostream& out, const CacheMemory& obj)
     return out;
 }
 
-CacheMemory *
-RubyCacheParams::create()
-{
-    return new CacheMemory(this);
-}
-
-CacheMemory::CacheMemory(const Params *p)
+CacheMemory::CacheMemory(const Params &p)
     : SimObject(p),
-    dataArray(p->dataArrayBanks, p->dataAccessLatency,
-              p->start_index_bit, p->ruby_system),
-    tagArray(p->tagArrayBanks, p->tagAccessLatency,
-             p->start_index_bit, p->ruby_system)
+    dataArray(p.dataArrayBanks, p.dataAccessLatency,
+              p.start_index_bit, p.ruby_system),
+    tagArray(p.tagArrayBanks, p.tagAccessLatency,
+             p.start_index_bit, p.ruby_system)
 {
-    m_cache_size = p->size;
-    m_cache_assoc = p->assoc;
-    m_replacementPolicy_ptr = p->replacement_policy;
-    m_start_index_bit = p->start_index_bit;
-    m_is_instruction_only_cache = p->is_icache;
-    m_resource_stalls = p->resourceStalls;
-    m_block_size = p->block_size;  // may be 0 at this point. Updated in init()
-    m_use_occupancy = dynamic_cast<WeightedLRUPolicy*>(
+    m_cache_size = p.size;
+    m_cache_assoc = p.assoc;
+    m_replacementPolicy_ptr = p.replacement_policy;
+    m_start_index_bit = p.start_index_bit;
+    m_is_instruction_only_cache = p.is_icache;
+    m_resource_stalls = p.resourceStalls;
+    m_block_size = p.block_size;  // may be 0 at this point. Updated in init()
+    m_use_occupancy = dynamic_cast<ReplacementPolicy::WeightedLRU*>(
                                     m_replacementPolicy_ptr) ? true : false;
 }
 
@@ -387,7 +381,8 @@ CacheMemory::setMRU(Addr address, int occupancy)
         // replacement policy. Depending on different replacement policies,
         // use different touch() function.
         if (m_use_occupancy) {
-            static_cast<WeightedLRUPolicy*>(m_replacementPolicy_ptr)->touch(
+            static_cast<ReplacementPolicy::WeightedLRU*>(
+                m_replacementPolicy_ptr)->touch(
                 entry->replacementData, occupancy);
         } else {
             m_replacementPolicy_ptr->touch(entry->replacementData);
@@ -414,7 +409,7 @@ void
 CacheMemory::recordCacheContents(int cntrl, CacheRecorder* tr) const
 {
     uint64_t warmedUpBlocks = 0;
-    uint64_t totalBlocks M5_VAR_USED = (uint64_t)m_cache_num_sets *
+    M5_VAR_USED uint64_t totalBlocks = (uint64_t)m_cache_num_sets *
                                        (uint64_t)m_cache_assoc;
 
     for (int i = 0; i < m_cache_num_sets; i++) {

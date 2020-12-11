@@ -90,10 +90,8 @@ class HDLcdPixelPump;
 class HDLcd: public AmbaDmaDevice
 {
   public:
-    HDLcd(const HDLcdParams *p);
+    HDLcd(const HDLcdParams &p);
     ~HDLcd();
-
-    void regStats() override;
 
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
@@ -391,7 +389,9 @@ class HDLcd: public AmbaDmaDevice
     std::unique_ptr<DmaEngine> dmaEngine;
 
   protected: // Statistics
-    struct {
+    struct HDLcdStats: public Stats::Group
+    {
+        HDLcdStats(Stats::Group *parent);
         Stats::Scalar underruns;
     } stats;
 };

@@ -296,26 +296,15 @@ class BaseDynInst : public ExecContext, public RefCounted
     {
         cpu->demapPage(vaddr, asn);
     }
-    void
-    demapInstPage(Addr vaddr, uint64_t asn)
-    {
-        cpu->demapPage(vaddr, asn);
-    }
-    void
-    demapDataPage(Addr vaddr, uint64_t asn)
-    {
-        cpu->demapPage(vaddr, asn);
-    }
 
     Fault initiateMemRead(Addr addr, unsigned size, Request::Flags flags,
-            const std::vector<bool> &byte_enable=std::vector<bool>()) override;
+            const std::vector<bool> &byte_enable) override;
 
     Fault initiateHtmCmd(Request::Flags flags) override;
 
     Fault writeMem(uint8_t *data, unsigned size, Addr addr,
                    Request::Flags flags, uint64_t *res,
-                   const std::vector<bool> &byte_enable=std::vector<bool>())
-                   override;
+                   const std::vector<bool> &byte_enable) override;
 
     Fault initiateMemAMO(Addr addr, unsigned size, Request::Flags flags,
                          AtomicOpFunctorPtr amo_op) override;
@@ -541,8 +530,6 @@ class BaseDynInst : public ExecContext, public RefCounted
     bool isIndirectCtrl() const { return staticInst->isIndirectCtrl(); }
     bool isCondCtrl()     const { return staticInst->isCondCtrl(); }
     bool isUncondCtrl()   const { return staticInst->isUncondCtrl(); }
-    bool isCondDelaySlot() const { return staticInst->isCondDelaySlot(); }
-    bool isThreadSync()   const { return staticInst->isThreadSync(); }
     bool isSerializing()  const { return staticInst->isSerializing(); }
     bool
     isSerializeBefore() const
@@ -555,11 +542,11 @@ class BaseDynInst : public ExecContext, public RefCounted
         return staticInst->isSerializeAfter() || status[SerializeAfter];
     }
     bool isSquashAfter() const { return staticInst->isSquashAfter(); }
-    bool isMemBarrier()   const { return staticInst->isMemBarrier(); }
+    bool isFullMemBarrier()   const { return staticInst->isFullMemBarrier(); }
+    bool isReadBarrier() const { return staticInst->isReadBarrier(); }
     bool isWriteBarrier() const { return staticInst->isWriteBarrier(); }
     bool isNonSpeculative() const { return staticInst->isNonSpeculative(); }
     bool isQuiesce() const { return staticInst->isQuiesce(); }
-    bool isIprAccess() const { return staticInst->isIprAccess(); }
     bool isUnverifiable() const { return staticInst->isUnverifiable(); }
     bool isSyscall() const { return staticInst->isSyscall(); }
     bool isMacroop() const { return staticInst->isMacroop(); }
@@ -567,7 +554,6 @@ class BaseDynInst : public ExecContext, public RefCounted
     bool isDelayedCommit() const { return staticInst->isDelayedCommit(); }
     bool isLastMicroop() const { return staticInst->isLastMicroop(); }
     bool isFirstMicroop() const { return staticInst->isFirstMicroop(); }
-    bool isMicroBranch() const { return staticInst->isMicroBranch(); }
     // hardware transactional memory
     bool isHtmStart() const { return staticInst->isHtmStart(); }
     bool isHtmStop() const { return staticInst->isHtmStop(); }
@@ -1057,7 +1043,7 @@ class BaseDynInst : public ExecContext, public RefCounted
     void
     mwaitAtomic(ThreadContext *tc) override
     {
-        return cpu->mwaitAtomic(threadNumber, tc, cpu->dtb);
+        return cpu->mwaitAtomic(threadNumber, tc, cpu->mmu);
     }
     AddressMonitor *
     getAddrMonitor() override
@@ -1072,11 +1058,11 @@ BaseDynInst<Impl>::initiateMemRead(Addr addr, unsigned size,
                                    Request::Flags flags,
                                    const std::vector<bool> &byte_enable)
 {
-    assert(byte_enable.empty() || byte_enable.size() == size);
+    assert(byte_enable.size() == size);
     return cpu->pushRequest(
-            dynamic_cast<typename DynInstPtr::PtrType>(this),
-            /* ld */ true, nullptr, size, addr, flags, nullptr, nullptr,
-            byte_enable);
+        dynamic_cast<typename DynInstPtr::PtrType>(this),
+        /* ld */ true, nullptr, size, addr, flags, nullptr, nullptr,
+        byte_enable);
 }
 
 template<class Impl>
@@ -1094,11 +1080,11 @@ BaseDynInst<Impl>::writeMem(uint8_t *data, unsigned size, Addr addr,
                             Request::Flags flags, uint64_t *res,
                             const std::vector<bool> &byte_enable)
 {
-    assert(byte_enable.empty() || byte_enable.size() == size);
+    assert(byte_enable.size() == size);
     return cpu->pushRequest(
-            dynamic_cast<typename DynInstPtr::PtrType>(this),
-            /* st */ false, data, size, addr, flags, res, nullptr,
-            byte_enable);
+        dynamic_cast<typename DynInstPtr::PtrType>(this),
+        /* st */ false, data, size, addr, flags, res, nullptr,
+        byte_enable);
 }
 
 template<class Impl>
@@ -1115,7 +1101,7 @@ BaseDynInst<Impl>::initiateMemAMO(Addr addr, unsigned size,
     return cpu->pushRequest(
             dynamic_cast<typename DynInstPtr::PtrType>(this),
             /* atomic */ false, nullptr, size, addr, flags, nullptr,
-            std::move(amo_op));
+            std::move(amo_op), std::vector<bool>(size, true));
 }
 
 #endif // __CPU_BASE_DYN_INST_HH__

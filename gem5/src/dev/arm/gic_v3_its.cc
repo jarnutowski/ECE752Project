@@ -771,15 +771,15 @@ ItsCommand::vsync(Yield &yield, CommandEntry &command)
     panic("ITS %s command unimplemented", __func__);
 }
 
-Gicv3Its::Gicv3Its(const Gicv3ItsParams *params)
- : BasicPioDevice(params, params->pio_size),
+Gicv3Its::Gicv3Its(const Gicv3ItsParams &params)
+ : BasicPioDevice(params, params.pio_size),
    dmaPort(name() + ".dma", *this),
    gitsControl(CTLR_QUIESCENT),
-   gitsTyper(params->gits_typer),
+   gitsTyper(params.gits_typer),
    gitsCbaser(0), gitsCreadr(0),
    gitsCwriter(0), gitsIidr(0),
    tableBases(NUM_BASER_REGS, 0),
-   requestorId(params->system->getRequestorId(this)),
+   requestorId(params.system->getRequestorId(this)),
    gic(nullptr),
    commandEvent([this] { checkCommandQueue(); }, name()),
    pendingCommands(false),
@@ -1285,10 +1285,4 @@ Gicv3Its::moveAllPendingState(
         0, sizeof(lpi_pending_table));
 
     rd2->updateDistributor();
-}
-
-Gicv3Its *
-Gicv3ItsParams::create()
-{
-    return new Gicv3Its(this);
 }

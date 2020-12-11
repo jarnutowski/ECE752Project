@@ -42,13 +42,13 @@
 #include "debug/PowerDomain.hh"
 #include "sim/power_domain.hh"
 
-PowerState::PowerState(const PowerStateParams *p) :
-    SimObject(p), _currState(p->default_state),
-    possibleStates(p->possible_states.begin(),
-                   p->possible_states.end()),
+PowerState::PowerState(const PowerStateParams &p) :
+    SimObject(p), _currState(p.default_state),
+    possibleStates(p.possible_states.begin(),
+                   p.possible_states.end()),
     stats(*this)
 {
-    for (auto &pm: p->leaders) {
+    for (auto &pm: p.leaders) {
         // Register this object as a follower. This object is
         // dependent on pm for power state transitions
         pm->addFollower(this);
@@ -235,16 +235,15 @@ PowerState::PowerStateStats::regStats()
 
     using namespace Stats;
 
-    const PowerStateParams *p = powerState.params();
+    const PowerStateParams &p = powerState.params();
 
     numTransitions.flags(nozero);
     numPwrMatchStateTransitions.flags(nozero);
 
     // Each sample is time in ticks
-    unsigned num_bins = std::max(p->clk_gate_bins, 10U);
+    unsigned num_bins = std::max(p.clk_gate_bins, 10U);
     ticksClkGated
-        .init(p->clk_gate_min, p->clk_gate_max,
-              (p->clk_gate_max / num_bins))
+        .init(p.clk_gate_min, p.clk_gate_max, (p.clk_gate_max / num_bins))
         .flags(pdf | nozero | nonan)
         ;
 
@@ -273,10 +272,4 @@ PowerState::PowerStateStats::preDumpStats()
      * perturbing the distribution stats).
      */
     powerState.computeStats();
-}
-
-PowerState*
-PowerStateParams::create()
-{
-    return new PowerState(this);
 }

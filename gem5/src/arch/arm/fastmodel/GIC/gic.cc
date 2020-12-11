@@ -297,7 +297,7 @@ SCGIC::before_end_of_elaboration()
 }
 
 GIC::GIC(const FastModelGICParams &params) :
-    BaseGic(&params),
+    BaseGic(params),
     ambaM(params.sc_gic->amba_m, params.name + ".amba_m", -1),
     ambaS(params.sc_gic->amba_s, params.name + ".amba_s", -1),
     redistributors(params.port_redistributor_connection_count),
@@ -358,15 +358,3 @@ GIC::supportsVersion(GicVersion version)
 }
 
 } // namespace FastModel
-
-FastModel::SCGIC *
-SCFastModelGICParams::create()
-{
-    return new FastModel::SCGIC(*this, name.c_str());
-}
-
-FastModel::GIC *
-FastModelGICParams::create()
-{
-    return new FastModel::GIC(*this);
-}

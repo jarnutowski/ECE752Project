@@ -252,12 +252,30 @@ namespace ArmISA
                 privNonSecureRead(v);
                 return *this;
             }
+            chain hypE2HSecureRead(bool v = true) const {
+                info[MISCREG_HYP_E2H_S_RD] = v;
+                return *this;
+            }
+            chain hypE2HNonSecureRead(bool v = true) const {
+                info[MISCREG_HYP_E2H_NS_RD] = v;
+                return *this;
+            }
             chain hypE2HRead(bool v = true) const {
-                info[MISCREG_HYP_E2H_RD] = v;
+                hypE2HSecureRead(v);
+                hypE2HNonSecureRead(v);
+                return *this;
+            }
+            chain hypE2HSecureWrite(bool v = true) const {
+                info[MISCREG_HYP_E2H_S_WR] = v;
+                return *this;
+            }
+            chain hypE2HNonSecureWrite(bool v = true) const {
+                info[MISCREG_HYP_E2H_NS_WR] = v;
                 return *this;
             }
             chain hypE2HWrite(bool v = true) const {
-                info[MISCREG_HYP_E2H_WR] = v;
+                hypE2HSecureWrite(v);
+                hypE2HNonSecureWrite(v);
                 return *this;
             }
             chain hypE2H(bool v = true) const {
@@ -265,14 +283,39 @@ namespace ArmISA
                 hypE2HWrite(v);
                 return *this;
             }
+            chain hypSecureRead(bool v = true) const {
+                info[MISCREG_HYP_S_RD] = v;
+                return *this;
+            }
+            chain hypNonSecureRead(bool v = true) const {
+                info[MISCREG_HYP_NS_RD] = v;
+                return *this;
+            }
             chain hypRead(bool v = true) const {
                 hypE2HRead(v);
-                info[MISCREG_HYP_RD] = v;
+                hypSecureRead(v);
+                hypNonSecureRead(v);
+                return *this;
+            }
+            chain hypSecureWrite(bool v = true) const {
+                info[MISCREG_HYP_S_WR] = v;
+                return *this;
+            }
+            chain hypNonSecureWrite(bool v = true) const {
+                info[MISCREG_HYP_NS_WR] = v;
                 return *this;
             }
             chain hypWrite(bool v = true) const {
                 hypE2HWrite(v);
-                info[MISCREG_HYP_WR] = v;
+                hypSecureWrite(v);
+                hypNonSecureWrite(v);
+                return *this;
+            }
+            chain hypSecure(bool v = true) const {
+                hypE2HSecureRead(v);
+                hypE2HSecureWrite(v);
+                hypSecureRead(v);
+                hypSecureWrite(v);
                 return *this;
             }
             chain hyp(bool v = true) const {
@@ -461,10 +504,10 @@ namespace ArmISA
         void clear();
 
       protected:
-        void clear32(const ArmISAParams *p, const SCTLR &sctlr_rst);
-        void clear64(const ArmISAParams *p);
-        void initID32(const ArmISAParams *p);
-        void initID64(const ArmISAParams *p);
+        void clear32(const ArmISAParams &p, const SCTLR &sctlr_rst);
+        void clear64(const ArmISAParams &p);
+        void initID32(const ArmISAParams &p);
+        void initID64(const ArmISAParams &p);
 
         void addressTranslation(TLB::ArmTranslationType tran_type,
             BaseTLB::Mode mode, Request::Flags flags, RegVal val);
@@ -810,21 +853,8 @@ namespace ArmISA
         static void zeroSveVecRegUpperPart(VecRegContainer &vc,
                                            unsigned eCount);
 
-        void
-        serialize(CheckpointOut &cp) const override
-        {
-            DPRINTF(Checkpoint, "Serializing Arm Misc Registers\n");
-            SERIALIZE_ARRAY(miscRegs, NUM_PHYS_MISCREGS);
-        }
-
-        void
-        unserialize(CheckpointIn &cp) override
-        {
-            DPRINTF(Checkpoint, "Unserializing Arm Misc Registers\n");
-            UNSERIALIZE_ARRAY(miscRegs, NUM_PHYS_MISCREGS);
-            CPSR tmp_cpsr = miscRegs[MISCREG_CPSR];
-            updateRegMap(tmp_cpsr);
-        }
+        void serialize(CheckpointOut &cp) const override;
+        void unserialize(CheckpointIn &cp) override;
 
         void startup() override;
 
@@ -853,9 +883,9 @@ namespace ArmISA
 
         typedef ArmISAParams Params;
 
-        const Params *params() const;
+        const Params &params() const;
 
-        ISA(Params *p);
+        ISA(const Params &p);
     };
 }
 

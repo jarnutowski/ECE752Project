@@ -53,6 +53,7 @@ from m5.objects.Uart import Uart
 from m5.objects.SimpleMemory import SimpleMemory
 from m5.objects.GenericTimer import *
 from m5.objects.Gic import *
+from m5.objects.MHU import MHU, Scp2ApDoorbell, Ap2ScpDoorbell
 from m5.objects.EnergyCtrl import EnergyCtrl
 from m5.objects.ClockedObject import ClockedObject
 from m5.objects.SubSystem import SubSystem
@@ -61,7 +62,9 @@ from m5.objects.ClockedObject import ClockedObject
 from m5.objects.PS2 import *
 from m5.objects.VirtIOMMIO import MmioVirtIO
 from m5.objects.Display import Display, Display1080p
+from m5.objects.Scmi import *
 from m5.objects.SMMUv3 import SMMUv3
+from m5.objects.PciDevice import PciLegacyIoBar, PciIoBar
 
 # Platforms with KVM support should generally use in-kernel GIC
 # emulation. Use a GIC model that automatically switches between
@@ -241,6 +244,10 @@ class RealViewOsc(ClockDomain):
 
     freq = Param.Clock("Default frequency")
 
+    # These are currently only used for the device tree.
+    min_freq = Param.Clock("0t", "Minimum frequency")
+    max_freq = Param.Clock("0t", "Maximum frequency")
+
     def generateDeviceTree(self, state):
         phandle = state.phandle(self)
         node = FdtNode("osc@" + format(long(phandle), 'x'))
@@ -248,8 +255,16 @@ class RealViewOsc(ClockDomain):
         node.append(FdtPropertyWords("arm,vexpress-sysreg,func",
                                      [0x1, int(self.device)]))
         node.append(FdtPropertyWords("#clock-cells", [0]))
-        freq = int(1.0/self.freq.value) # Values are stored as a clock period
-        node.append(FdtPropertyWords("freq-range", [freq, freq]))
+
+        minf = self.min_freq if self.min_freq.value else self.freq
+        maxf = self.max_freq if self.max_freq.value else self.freq
+
+        # Values are stored as a clock period.
+        def to_freq(prop):
+            return int(1.0 / prop.value)
+
+        node.append(FdtPropertyWords("freq-range",
+                                     [to_freq(minf), to_freq(maxf)]))
         node.append(FdtPropertyStrings("clock-output-names",
                                        ["oscclk" + str(phandle)]))
         node.appendPhandle(self)
@@ -285,10 +300,12 @@ Express (V2M-P1) motherboard. See ARM DUI 0447J for details.
     class Temperature(RealViewTemperatureSensor):
         site, position, dcc = (0, 0, 0)
 
-    osc_mcc = Osc(device=0, freq="50MHz")
-    osc_clcd = Osc(device=1, freq="23.75MHz")
+    osc_mcc = Osc(device=0, min_freq="25MHz", max_freq="60MHz", freq="50MHz")
+    osc_clcd = Osc(device=1, min_freq="23.75MHz", max_freq="63.5MHz",
+                   freq="23.75MHz")
     osc_peripheral = Osc(device=2, freq="24MHz")
-    osc_system_bus = Osc(device=4, freq="24MHz")
+    osc_system_bus = Osc(device=4, min_freq="2MHz", max_freq="230MHz",
+                         freq="24MHz")
 
     # See Table 4.19 in ARM DUI 0447J (Motherboard Express uATX TRM).
     temp_crtl = Temperature(device=0)
@@ -319,11 +336,12 @@ ARM DUI 0604E for details.
         site, position, dcc = (1, 0, 0)
 
     # See Table 2.8 in ARM DUI 0604E (CoreTile Express A15x2 TRM)
-    osc_cpu = Osc(device=0, freq="60MHz")
-    osc_hsbm = Osc(device=4, freq="40MHz")
-    osc_pxl = Osc(device=5, freq="23.75MHz")
-    osc_smb = Osc(device=6, freq="50MHz")
-    osc_sys = Osc(device=7, freq="60MHz")
+    osc_cpu = Osc(device=0, min_freq="20MHz", max_freq="60MHz", freq="60MHz")
+    osc_hsbm = Osc(device=4, min_freq="20MHz", max_freq="40MHz", freq="40MHz")
+    osc_pxl = Osc(device=5, min_freq="23.76MHz", max_freq="165MHz",
+                  freq="23.75MHz")
+    osc_smb = Osc(device=6, min_freq="20MHz", max_freq="50MHz", freq="50MHz")
+    osc_sys = Osc(device=7, min_freq="20MHz", max_freq="60MHz", freq="60MHz")
     osc_ddr = Osc(device=8, freq="40MHz")
 
     def generateDeviceTree(self, state):
@@ -542,6 +560,59 @@ class HDLcd(AmbaDmaDevice):
 
         yield node
 
+class ParentMem(SimpleMemory):
+    """
+    This is a base abstract class for child node generation
+    A memory willing to autogenerate child nodes can do that
+    directly in the generateDeviceTree method.
+    However sometimes portions of memory (child nodes) are tagged
+    for specific applications. Hardcoding the child node in the
+    parent memory class is not flexible, so we delegate this
+    to the application model, which is registering the generator
+    helper via the ParentMem interface.
+    """
+    def __init__(self, *args, **kwargs):
+        super(ParentMem, self).__init__(*args, **kwargs)
+        self._generators = []
+
+    def addSubnodeGenerator(self, gen):
+        """
+        This is the method a client application would use to
+        register a child generator in the memory object.
+        """
+        self._generators.append(gen)
+
+    def generateSubnodes(self, node, state):
+        """
+        This is the method the memory would use to instantiate
+        the child nodes via the previously registered generators.
+        """
+        for subnode_gen in self._generators:
+            node.append(subnode_gen(state))
+
+class MmioSRAM(ParentMem):
+    def __init__(self, *args, **kwargs):
+        super(MmioSRAM, self).__init__(**kwargs)
+
+    def generateDeviceTree(self, state):
+        node = FdtNode("sram@%x" % long(self.range.start))
+        node.appendCompatible(["mmio-sram"])
+        node.append(FdtPropertyWords("reg",
+            state.addrCells(self.range.start) +
+            state.sizeCells(self.range.size()) ))
+
+        local_state = FdtState(addr_cells=2, size_cells=2, cpu_cells=1)
+        node.append(local_state.addrCellsProperty())
+        node.append(local_state.sizeCellsProperty())
+        node.append(FdtPropertyWords("ranges",
+            local_state.addrCells(0) +
+            state.addrCells(self.range.start) +
+            state.sizeCells(self.range.size()) ))
+
+        self.generateSubnodes(node, state)
+
+        yield node
+
 class FVPBasePwrCtrl(BasicPioDevice):
     """
 Based on Fast Models Base_PowerController v11.8
@@ -552,6 +623,23 @@ Reference:
 
     type = 'FVPBasePwrCtrl'
     cxx_header = 'dev/arm/fvp_base_pwr_ctrl.hh'
+
+class GenericMHU(MHU):
+    lowp_scp2ap = Scp2ApDoorbell(
+        set_address=0x10020008, clear_address=0x10020010,
+        interrupt=ArmSPI(num=68))
+    highp_scp2ap = Scp2ApDoorbell(
+        set_address=0x10020028, clear_address=0x10020030,
+        interrupt=ArmSPI(num=67))
+    sec_scp2ap = Scp2ApDoorbell(
+        set_address=0x10020208, clear_address=0x10020210,
+        interrupt=ArmSPI(num=69))
+    lowp_ap2scp = Ap2ScpDoorbell(
+        set_address=0x10020108, clear_address=0x10020110)
+    highp_ap2scp = Ap2ScpDoorbell(
+        set_address=0x10020128, clear_address=0x10020130)
+    sec_ap2scp = Ap2ScpDoorbell(
+        set_address=0x10020308, clear_address=0x10020310)
 
 class RealView(Platform):
     type = 'RealView'
@@ -702,10 +790,11 @@ class VExpress_EMM(RealView):
         pci_pio_base=0)
 
     sys_counter = SystemCounter()
-    generic_timer = GenericTimer(int_phys_s=ArmPPI(num=29),
-                                 int_phys_ns=ArmPPI(num=30),
-                                 int_virt=ArmPPI(num=27),
-                                 int_hyp=ArmPPI(num=26))
+    generic_timer = GenericTimer(
+        int_phys_s=ArmPPI(num=29, int_type='IRQ_TYPE_LEVEL_LOW'),
+        int_phys_ns=ArmPPI(num=30, int_type='IRQ_TYPE_LEVEL_LOW'),
+        int_virt=ArmPPI(num=27, int_type='IRQ_TYPE_LEVEL_LOW'),
+        int_hyp=ArmPPI(num=26, int_type='IRQ_TYPE_LEVEL_LOW'))
 
     timer0 = Sp804(int0=ArmSPI(num=34), int1=ArmSPI(num=34),
                    pio_addr=0x1C110000, clock0='1MHz', clock1='1MHz')
@@ -717,10 +806,9 @@ class VExpress_EMM(RealView):
     kmi1   = Pl050(pio_addr=0x1c070000, interrupt=ArmSPI(num=45),
                    ps2=PS2TouchKit())
     cf_ctrl = IdeController(disks=[], pci_func=0, pci_dev=0, pci_bus=2,
-                            io_shift = 2, ctrl_offset = 2, Command = 0x1,
-                            BAR0 = 0x1C1A0000, BAR0Size = '256B',
-                            BAR1 = 0x1C1A0100, BAR1Size = '4096B',
-                            BAR0LegacyIO = True, BAR1LegacyIO = True)
+                            io_shift = 2, ctrl_offset = 2, Command = 0x1)
+    cf_ctrl.BAR0 = PciLegacyIoBar(addr='0x1C1A0000', size='256B')
+    cf_ctrl.BAR1 = PciLegacyIoBar(addr='0x1C1A0100', size='4096B')
 
     bootmem        = SimpleMemory(range = AddrRange('64MB'),
                                   conf_table_reported = False)
@@ -858,6 +946,7 @@ Memory map:
    0x10000000-0x13ffffff: gem5-specific peripherals (Off-chip, CS5)
        0x10000000-0x1000ffff: gem5 energy controller
        0x10010000-0x1001ffff: gem5 pseudo-ops
+       0x10020000-0x1002ffff: gem5 MHU
 
    0x14000000-0x17ffffff: Reserved (Off-chip, PSRAM, CS1)
    0x18000000-0x1bffffff: Reserved (Off-chip, Peripherals, CS2)
@@ -896,6 +985,8 @@ Memory map:
        0x2c1c0000-0x2c1cffff: GICv2m MSI frame 0
 
        0x2d000000-0x2d00ffff: GPU (reserved)
+
+       0x2e000000-0x2e007fff: Non-trusted SRAM
 
        0x2f000000-0x2fffffff: PCI IO space
        0x30000000-0x3fffffff: PCI config space
@@ -963,6 +1054,10 @@ Interrupts:
     trusted_sram = SimpleMemory(range=AddrRange(0x04000000, size='256kB'),
                                 conf_table_reported=False)
 
+    # Non-Trusted SRAM
+    non_trusted_sram = MmioSRAM(range=AddrRange(0x2e000000, size=0x8000),
+                                conf_table_reported=False)
+
     # Platform control device (off-chip)
     realview_io = RealViewCtrl(proc_id0=0x14000000, proc_id1=0x14000000,
                                idreg=0x30101100, pio_addr=0x1c010000)
@@ -975,10 +1070,11 @@ Interrupts:
     trusted_watchdog = Sp805(pio_addr=0x2a490000, interrupt=ArmSPI(num=56))
 
     sys_counter = SystemCounter()
-    generic_timer = GenericTimer(int_phys_s=ArmPPI(num=29),
-                                 int_phys_ns=ArmPPI(num=30),
-                                 int_virt=ArmPPI(num=27),
-                                 int_hyp=ArmPPI(num=26))
+    generic_timer = GenericTimer(
+        int_phys_s=ArmPPI(num=29, int_type='IRQ_TYPE_LEVEL_LOW'),
+        int_phys_ns=ArmPPI(num=30, int_type='IRQ_TYPE_LEVEL_LOW'),
+        int_virt=ArmPPI(num=27, int_type='IRQ_TYPE_LEVEL_LOW'),
+        int_hyp=ArmPPI(num=26, int_type='IRQ_TYPE_LEVEL_LOW'))
     generic_timer_mem = GenericTimerMem(cnt_control_base=0x2a430000,
                                         cnt_read_base=0x2a800000,
                                         cnt_ctl_base=0x2a810000,
@@ -1002,6 +1098,7 @@ Interrupts:
         memories = [
             self.bootmem,
             self.trusted_sram,
+            self.non_trusted_sram,
             self.flash0,
         ]
         return memories
@@ -1125,6 +1222,25 @@ Interrupts:
         #  loader, but this is the only place we can configure the
         #  system.
         cur_sys.m5ops_base = 0x10010000
+
+    def attachScmi(self, bus):
+        # Generate and attach the mailbox
+        self.mailbox = GenericMHU(pio_addr=0x10020000)
+        self._attach_device(self.mailbox, bus)
+
+        # Generate and attach the SCMI platform
+        _scmi_comm = ScmiCommunication(
+            agent_channel = ScmiAgentChannel(
+                shmem=self.non_trusted_sram,
+                shmem_range=AddrRange(0x2e000000, size=0x200),
+                doorbell=self.mailbox.highp_ap2scp),
+            platform_channel = ScmiPlatformChannel(
+                shmem=self.non_trusted_sram,
+                shmem_range=AddrRange(0x2e000000, size=0x200),
+                doorbell=self.mailbox.highp_scp2ap))
+
+        self.scmi = ScmiPlatform(comms=[ _scmi_comm ])
+        self._attach_device(self.scmi, bus)
 
     def generateDeviceTree(self, state):
         # Generate using standard RealView function

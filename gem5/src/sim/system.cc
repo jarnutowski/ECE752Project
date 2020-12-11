@@ -50,12 +50,15 @@
 #include "base/loader/symtab.hh"
 #include "base/str.hh"
 #include "base/trace.hh"
+#include "config/the_isa.hh"
 #include "config/use_kvm.hh"
 #if USE_KVM
 #include "cpu/kvm/base.hh"
 #include "cpu/kvm/vm.hh"
 #endif
+#if THE_ISA != NULL_ISA
 #include "cpu/base.hh"
+#endif
 #include "cpu/thread_context.hh"
 #include "debug/Loader.hh"
 #include "debug/Quiesce.hh"
@@ -180,7 +183,7 @@ System::Threads::quiesce(ContextID id)
 {
     auto &t = thread(id);
 #   if THE_ISA != NULL_ISA
-    BaseCPU M5_VAR_USED *cpu = t.context->getCpuPtr();
+    M5_VAR_USED BaseCPU *cpu = t.context->getCpuPtr();
     DPRINTFS(Quiesce, cpu, "quiesce()\n");
 #   endif
     t.quiesce();
@@ -202,32 +205,31 @@ System::Threads::quiesceTick(ContextID id, Tick when)
 
 int System::numSystemsRunning = 0;
 
-System::System(Params *p)
+System::System(const Params &p)
     : SimObject(p), _systemPort("system_port", this),
-      multiThread(p->multi_thread),
+      multiThread(p.multi_thread),
       pagePtr(0),
-      init_param(p->init_param),
-      physProxy(_systemPort, p->cache_line_size),
-      workload(p->workload),
+      init_param(p.init_param),
+      physProxy(_systemPort, p.cache_line_size),
+      workload(p.workload),
 #if USE_KVM
-      kvmVM(p->kvm_vm),
+      kvmVM(p.kvm_vm),
 #else
       kvmVM(nullptr),
 #endif
-      physmem(name() + ".physmem", p->memories, p->mmap_using_noreserve,
-              p->shared_backstore),
-      memoryMode(p->mem_mode),
-      _cacheLineSize(p->cache_line_size),
+      physmem(name() + ".physmem", p.memories, p.mmap_using_noreserve,
+              p.shared_backstore),
+      memoryMode(p.mem_mode),
+      _cacheLineSize(p.cache_line_size),
       workItemsBegin(0),
       workItemsEnd(0),
-      numWorkIds(p->num_work_ids),
-      thermalModel(p->thermal_model),
+      numWorkIds(p.num_work_ids),
+      thermalModel(p.thermal_model),
       _params(p),
-      _m5opRange(p->m5ops_base ?
-                 RangeSize(p->m5ops_base, 0x10000) :
+      _m5opRange(p.m5ops_base ?
+                 RangeSize(p.m5ops_base, 0x10000) :
                  AddrRange(1, 0)), // Create an empty range if disabled
-      totalNumInsts(0),
-      redirectPaths(p->redirect_paths)
+      redirectPaths(p.redirect_paths)
 {
     if (workload)
         workload->system = this;
@@ -247,7 +249,7 @@ System::System(Params *p)
         warn_once("Cache line size is neither 16, 32, 64 nor 128 bytes.\n");
 
     // Get the generic system requestor IDs
-    RequestorID tmp_id M5_VAR_USED;
+    M5_VAR_USED RequestorID tmp_id;
     tmp_id = getRequestorId(this, "writebacks");
     assert(tmp_id == Request::wbRequestorId);
     tmp_id = getRequestorId(this, "functional");
@@ -259,22 +261,14 @@ System::System(Params *p)
     numSystemsRunning++;
 
     // Set back pointers to the system in all memories
-    for (int x = 0; x < params()->memories.size(); x++)
-        params()->memories[x]->system(this);
+    for (int x = 0; x < params().memories.size(); x++)
+        params().memories[x]->system(this);
 }
 
 System::~System()
 {
     for (uint32_t j = 0; j < numWorkIds; j++)
         delete workItemStats[j];
-}
-
-void
-System::init()
-{
-    // check that the system port is connected
-    if (!_systemPort.isConnected())
-        panic("System port on %s is not connected.\n", name());
 }
 
 void
@@ -442,12 +436,6 @@ System::getDeviceMemory(RequestorID id) const
     panic_if(!deviceMemMap.count(id),
              "No device memory found for RequestorID %d\n", id);
     return deviceMemMap.at(id);
-}
-
-void
-System::drainResume()
-{
-    totalNumInsts = 0;
 }
 
 void
@@ -655,10 +643,4 @@ System::getRequestorName(RequestorID requestor_id)
 
     const auto& requestor_info = requestors[requestor_id];
     return requestor_info.req_name;
-}
-
-System *
-SystemParams::create()
-{
-    return new System(this);
 }

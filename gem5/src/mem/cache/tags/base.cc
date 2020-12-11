@@ -55,13 +55,13 @@
 #include "sim/sim_exit.hh"
 #include "sim/system.hh"
 
-BaseTags::BaseTags(const Params *p)
-    : ClockedObject(p), blkSize(p->block_size), blkMask(blkSize - 1),
-      size(p->size), lookupLatency(p->tag_latency),
-      system(p->system), indexingPolicy(p->indexing_policy),
-      warmupBound((p->warmup_percentage/100.0) * (p->size / p->block_size)),
-      warmedUp(false), numBlocks(p->size / p->block_size),
-      dataBlks(new uint8_t[p->size]), // Allocate data storage in one big chunk
+BaseTags::BaseTags(const Params &p)
+    : ClockedObject(p), blkSize(p.block_size), blkMask(blkSize - 1),
+      size(p.size), lookupLatency(p.tag_latency),
+      system(p.system), indexingPolicy(p.indexing_policy),
+      warmupBound((p.warmup_percentage/100.0) * (p.size / p.block_size)),
+      warmedUp(false), numBlocks(p.size / p.block_size),
+      dataBlks(new uint8_t[p.size]), // Allocate data storage in one big chunk
       stats(*this)
 {
     registerExitCallback([this]() { cleanupRefs(); });
@@ -86,8 +86,7 @@ BaseTags::findBlock(Addr addr, bool is_secure) const
     // Search for block
     for (const auto& location : entries) {
         CacheBlk* blk = static_cast<CacheBlk*>(location);
-        if ((blk->tag == tag) && blk->isValid() &&
-            (blk->isSecure() == is_secure)) {
+        if (blk->matchTag(tag, is_secure)) {
             return blk;
         }
     }
@@ -124,6 +123,19 @@ BaseTags::insertBlock(const PacketPtr pkt, CacheBlk *blk)
     stats.dataAccesses += 1;
 }
 
+void
+BaseTags::moveBlock(CacheBlk *src_blk, CacheBlk *dest_blk)
+{
+    assert(!dest_blk->isValid());
+    assert(src_blk->isValid());
+
+    // Move src's contents to dest's
+    *dest_blk = std::move(*src_blk);
+
+    assert(dest_blk->isValid());
+    assert(!src_blk->isValid());
+}
+
 Addr
 BaseTags::extractTag(const Addr addr) const
 {
@@ -134,7 +146,7 @@ void
 BaseTags::cleanupRefsVisitor(CacheBlk &blk)
 {
     if (blk.isValid()) {
-        stats.totalRefs += blk.refCount;
+        stats.totalRefs += blk.getRefCount();
         ++stats.sampledRefs;
     }
 }
@@ -149,10 +161,10 @@ void
 BaseTags::computeStatsVisitor(CacheBlk &blk)
 {
     if (blk.isValid()) {
-        assert(blk.task_id < ContextSwitchTaskId::NumTaskId);
-        stats.occupanciesTaskId[blk.task_id]++;
-        assert(blk.tickInserted <= curTick());
-        Tick age = curTick() - blk.tickInserted;
+        const uint32_t task_id = blk.getTaskId();
+        assert(task_id < ContextSwitchTaskId::NumTaskId);
+        stats.occupanciesTaskId[task_id]++;
+        Tick age = blk.getAge();
 
         int age_index;
         if (age / SimClock::Int::us < 10) { // <10us
@@ -166,7 +178,7 @@ BaseTags::computeStatsVisitor(CacheBlk &blk)
         } else
             age_index = 4; // >10ms
 
-        stats.ageTaskId[blk.task_id][age_index]++;
+        stats.ageTaskId[task_id][age_index]++;
     }
 }
 

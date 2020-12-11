@@ -51,8 +51,8 @@
 
 using namespace std;
 
-DirectoryMemory::DirectoryMemory(const Params *p)
-    : SimObject(p), addrRanges(p->addr_ranges.begin(), p->addr_ranges.end())
+DirectoryMemory::DirectoryMemory(const Params &p)
+    : SimObject(p), addrRanges(p.addr_ranges.begin(), p.addr_ranges.end())
 {
     m_size_bytes = 0;
     for (const auto &r: addrRanges) {
@@ -157,10 +157,4 @@ void
 DirectoryMemory::recordRequestType(DirectoryRequestType requestType) {
     DPRINTF(RubyStats, "Recorded statistic: %s\n",
             DirectoryRequestType_to_string(requestType));
-}
-
-DirectoryMemory *
-RubyDirectoryMemoryParams::create()
-{
-    return new DirectoryMemory(this);
 }

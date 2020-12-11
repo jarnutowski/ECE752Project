@@ -98,8 +98,8 @@ CortexA76::getPort(const std::string &if_name, PortID idx)
         return Base::getPort(if_name, idx);
 }
 
-CortexA76Cluster::CortexA76Cluster(Params &p) :
-    SimObject(&p), _params(p), cores(p.cores), evs(p.evs)
+CortexA76Cluster::CortexA76Cluster(const Params &p) :
+    SimObject(p), _params(p), cores(p.cores), evs(p.evs)
 {
     for (int i = 0; i < p.cores.size(); i++)
         p.cores[i]->setCluster(this, i);
@@ -202,15 +202,3 @@ CortexA76Cluster::getPort(const std::string &if_name, PortID idx)
 }
 
 } // namespace FastModel
-
-FastModel::CortexA76 *
-FastModelCortexA76Params::create()
-{
-    return new FastModel::CortexA76(*this);
-}
-
-FastModel::CortexA76Cluster *
-FastModelCortexA76ClusterParams::create()
-{
-    return new FastModel::CortexA76Cluster(*this);
-}

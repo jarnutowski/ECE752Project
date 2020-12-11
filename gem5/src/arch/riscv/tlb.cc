@@ -35,6 +35,7 @@
 
 #include "arch/riscv/faults.hh"
 #include "arch/riscv/fs_workload.hh"
+#include "arch/riscv/mmu.hh"
 #include "arch/riscv/pagetable.hh"
 #include "arch/riscv/pagetable_walker.hh"
 #include "arch/riscv/pra_constants.hh"
@@ -65,15 +66,15 @@ buildKey(Addr vpn, uint16_t asid)
     return (static_cast<Addr>(asid) << 48) | vpn;
 }
 
-TLB::TLB(const Params *p)
-    : BaseTLB(p), size(p->size), tlb(size), lruSeq(0), stats(this)
+TLB::TLB(const Params &p)
+    : BaseTLB(p), size(p.size), tlb(size), lruSeq(0), stats(this)
 {
     for (size_t x = 0; x < size; x++) {
         tlb[x].trieHandle = NULL;
         freeList.push_back(&tlb[x]);
     }
 
-    walker = p->walker;
+    walker = p.walker;
     walker->setTLB(this);
 }
 
@@ -411,13 +412,13 @@ TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
     Addr paddr = vaddr;
 
     if (FullSystem) {
-        TLB *tlb = dynamic_cast<TLB *>(tc->getDTBPtr());
+        MMU *mmu = static_cast<MMU *>(tc->getMMUPtr());
 
-        PrivilegeMode pmode = tlb->getMemPriv(tc, mode);
+        PrivilegeMode pmode = mmu->getMemPriv(tc, mode);
         SATP satp = tc->readMiscReg(MISCREG_SATP);
         if (pmode != PrivilegeMode::PRV_M &&
             satp.mode != AddrXlateMode::BARE) {
-            Walker *walker = tlb->getWalker();
+            Walker *walker = mmu->getDataWalker();
             unsigned logBytes;
             Fault fault = walker->startFunctional(
                     tc, paddr, logBytes, mode);
@@ -510,10 +511,4 @@ TLB::TlbStats::TlbStats(Stats::Group *parent)
     ADD_STAT(accesses, "Total TLB (read and write) accesses",
         read_accesses + write_accesses)
 {
-}
-
-RiscvISA::TLB *
-RiscvTLBParams::create()
-{
-    return new TLB(this);
 }

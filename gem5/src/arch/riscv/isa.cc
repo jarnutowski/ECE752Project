@@ -49,7 +49,7 @@
 namespace RiscvISA
 {
 
-const std::array<const char *, NumMiscRegs> M5_VAR_USED MiscRegNames = {{
+M5_VAR_USED const std::array<const char *, NumMiscRegs> MiscRegNames = {{
     [MISCREG_PRV]           = "PRV",
     [MISCREG_ISA]           = "ISA",
     [MISCREG_VENDORID]      = "VENDORID",
@@ -176,16 +176,16 @@ const std::array<const char *, NumMiscRegs> M5_VAR_USED MiscRegNames = {{
     [MISCREG_FRM]           = "FRM",
 }};
 
-ISA::ISA(Params *p) : BaseISA(p)
+ISA::ISA(const Params &p) : BaseISA(p)
 {
     miscRegFile.resize(NumMiscRegs);
     clear();
 }
 
-const RiscvISAParams *
+const RiscvISAParams &
 ISA::params() const
 {
-    return dynamic_cast<const Params *>(_params);
+    return dynamic_cast<const Params &>(_params);
 }
 
 void ISA::clear()
@@ -410,10 +410,4 @@ ISA::unserialize(CheckpointIn &cp)
     UNSERIALIZE_CONTAINER(miscRegFile);
 }
 
-}
-
-RiscvISA::ISA *
-RiscvISAParams::create()
-{
-    return new RiscvISA::ISA(this);
 }

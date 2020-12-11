@@ -45,7 +45,6 @@
 #include "arch/locked_mem.hh"
 #include "base/loader/memory_image.hh"
 #include "base/loader/object_file.hh"
-#include "cpu/base.hh"
 #include "cpu/thread_context.hh"
 #include "debug/LLSC.hh"
 #include "debug/MemoryAccess.hh"
@@ -54,13 +53,13 @@
 
 using namespace std;
 
-AbstractMemory::AbstractMemory(const Params *p) :
-    ClockedObject(p), range(params()->range), pmemAddr(NULL),
-    backdoor(params()->range, nullptr,
+AbstractMemory::AbstractMemory(const Params &p) :
+    ClockedObject(p), range(p.range), pmemAddr(NULL),
+    backdoor(params().range, nullptr,
              (MemBackdoor::Flags)(MemBackdoor::Readable |
                                   MemBackdoor::Writeable)),
-    confTableReported(p->conf_table_reported), inAddrMap(p->in_addr_map),
-    kvmMap(p->kvm_map), _system(NULL),
+    confTableReported(p.conf_table_reported), inAddrMap(p.in_addr_map),
+    kvmMap(p.kvm_map), _system(NULL),
     stats(*this)
 {
     panic_if(!range.valid() || !range.size(),
@@ -73,7 +72,7 @@ AbstractMemory::initState()
 {
     ClockedObject::initState();
 
-    const auto &file = params()->image_file;
+    const auto &file = params().image_file;
     if (file == "")
         return;
 
@@ -270,6 +269,7 @@ AbstractMemory::trackLoadLocked(PacketPtr pkt)
     DPRINTF(LLSC, "Adding lock record: context %d addr %#x\n",
             req->contextId(), paddr);
     lockedAddrList.push_front(LockedAddr(req));
+    backdoor.invalidate();
 }
 
 
@@ -347,17 +347,15 @@ static inline void
 tracePacket(System *sys, const char *label, PacketPtr pkt)
 {
     int size = pkt->getSize();
-#if THE_ISA != NULL_ISA
     if (size == 1 || size == 2 || size == 4 || size == 8) {
         ByteOrder byte_order = sys->getGuestByteOrder();
-        DPRINTF(MemoryAccess,"%s from %s of size %i on address %#x data "
+        DPRINTF(MemoryAccess, "%s from %s of size %i on address %#x data "
                 "%#x %c\n", label, sys->getRequestorName(pkt->req->
                 requestorId()), size, pkt->getAddr(),
                 size, pkt->getAddr(), pkt->getUintX(byte_order),
                 pkt->req->isUncacheable() ? 'U' : 'C');
         return;
     }
-#endif
     DPRINTF(MemoryAccess, "%s from %s of size %i on address %#x %c\n",
             label, sys->getRequestorName(pkt->req->requestorId()),
             size, pkt->getAddr(), pkt->req->isUncacheable() ? 'U' : 'C');

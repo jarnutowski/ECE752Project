@@ -260,30 +260,36 @@ class Request
     typedef ::Flags<CacheCoherenceFlagsType> CacheCoherenceFlags;
 
     /**
-     * These bits are used to set the coherence policy
-     * for the GPU and are encoded in the GCN3 instructions.
-     * See the AMD GCN3 ISA Architecture Manual for more
-     * details.
+     * These bits are used to set the coherence policy for the GPU and are
+     * encoded in the GCN3 instructions. The GCN3 ISA defines two cache levels
+     * See the AMD GCN3 ISA Architecture Manual for more details.
      *
      * INV_L1: L1 cache invalidation
-     * WB_L2: L2 cache writeback
+     * FLUSH_L2: L2 cache flush
      *
-     * SLC: System Level Coherent. Accesses are forced to miss in
-     *      the L2 cache and are coherent with system memory.
+     * Invalidation means to simply discard all cache contents. This can be
+     * done in the L1 since it is implemented as a write-through cache and
+     * there are other copies elsewhere in the hierarchy.
      *
-     * GLC: Globally Coherent. Controls how reads and writes are
-     *      handled by the L1 cache. Global here referes to the
-     *      data being visible globally on the GPU (i.e., visible
-     *      to all WGs).
+     * For flush the contents of the cache need to be written back to memory
+     * when dirty and can be discarded otherwise. This operation is more
+     * involved than invalidation and therefore we do not flush caches with
+     * redundant copies of data.
      *
-     * For atomics, the GLC bit is used to distinguish between
-     * between atomic return/no-return operations.
+     * SLC: System Level Coherent. Accesses are forced to miss in the L2 cache
+     *      and are coherent with system memory.
+     *
+     * GLC: Globally Coherent. Controls how reads and writes are handled by
+     *      the L1 cache. Global here referes to the data being visible
+     *      globally on the GPU (i.e., visible to all WGs).
+     *
+     * For atomics, the GLC bit is used to distinguish between between atomic
+     * return/no-return operations. These flags are used by GPUDynInst.
      */
     enum : CacheCoherenceFlagsType {
         /** mem_sync_op flags */
         INV_L1                  = 0x00000001,
-        WB_L2                   = 0x00000020,
-        /** user-policy flags */
+        FLUSH_L2                = 0x00000020,
         /** user-policy flags */
         SLC_BIT                 = 0x00000080,
         GLC_BIT                 = 0x00000100,
@@ -432,6 +438,7 @@ class Request
     {
         _flags.set(flags);
         privateFlags.set(VALID_PADDR|VALID_SIZE);
+        _byteEnable = std::vector<bool>(size, true);
     }
 
     Request(Addr vaddr, unsigned size, Flags flags,
@@ -440,6 +447,7 @@ class Request
     {
         setVirt(vaddr, size, flags, id, pc, std::move(atomic_op));
         setContext(cid);
+        _byteEnable = std::vector<bool>(size, true);
     }
 
     Request(const Request& other)
@@ -541,14 +549,12 @@ class Request
         req1->_size = split_addr - _vaddr;
         req2->_vaddr = split_addr;
         req2->_size = _size - req1->_size;
-        if (!_byteEnable.empty()) {
-            req1->_byteEnable = std::vector<bool>(
-                _byteEnable.begin(),
-                _byteEnable.begin() + req1->_size);
-            req2->_byteEnable = std::vector<bool>(
-                _byteEnable.begin() + req1->_size,
-                _byteEnable.end());
-        }
+        req1->_byteEnable = std::vector<bool>(
+            _byteEnable.begin(),
+            _byteEnable.begin() + req1->_size);
+        req2->_byteEnable = std::vector<bool>(
+            _byteEnable.begin() + req1->_size,
+            _byteEnable.end());
     }
 
     /**
@@ -624,7 +630,7 @@ class Request
     void
     setByteEnable(const std::vector<bool>& be)
     {
-        assert(be.empty() || be.size() == _size);
+        assert(be.size() == _size);
         _byteEnable = be;
     }
 
@@ -938,11 +944,15 @@ class Request
     /**
      * Accessor functions for the memory space configuration flags and used by
      * GPU ISAs such as the Heterogeneous System Architecture (HSA). Note that
-     * these are for testing only; setting extraFlags should be done via
-     * setCacheCoherenceFlags().
+     * setting extraFlags should be done via setCacheCoherenceFlags().
      */
-    bool isSLC() const { return _cacheCoherenceFlags.isSet(SLC_BIT); }
-    bool isGLC() const { return _cacheCoherenceFlags.isSet(GLC_BIT); }
+    bool isInvL1() const { return _cacheCoherenceFlags.isSet(INV_L1); }
+
+    bool
+    isGL2CacheFlush() const
+    {
+        return _cacheCoherenceFlags.isSet(FLUSH_L2);
+    }
 
     /**
      * Accessor functions to determine whether this request is part of

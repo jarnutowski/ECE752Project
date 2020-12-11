@@ -115,13 +115,13 @@ VncServer::DataEvent::process(int revent)
 /**
  * VncServer
  */
-VncServer::VncServer(const Params *p)
-    : VncInput(p), listenEvent(NULL), dataEvent(NULL), number(p->number),
+VncServer::VncServer(const Params &p)
+    : VncInput(p), listenEvent(NULL), dataEvent(NULL), number(p.number),
       dataFd(-1), sendUpdate(false),
       supportsRawEnc(false), supportsResizeEnc(false)
 {
-    if (p->port)
-        listen(p->port);
+    if (p.port)
+        listen(p.port);
 
     curState = WaitForProtocolVersion;
 
@@ -139,7 +139,7 @@ VncServer::VncServer(const Params *p)
     pixelFormat.greenshift = pixelConverter.ch_g.offset;
     pixelFormat.blueshift = pixelConverter.ch_b.offset;
 
-    DPRINTF(VNC, "Vnc server created at port %d\n", p->port);
+    DPRINTF(VNC, "Vnc server created at port %d\n", p.port);
 }
 
 VncServer::~VncServer()
@@ -378,7 +378,7 @@ VncServer::checkProtocolVersion()
 {
     assert(curState == WaitForProtocolVersion);
 
-    size_t len M5_VAR_USED;
+    M5_VAR_USED size_t len;
     char version_string[13];
 
     // Null terminate the message so it's easier to work with
@@ -729,11 +729,3 @@ VncServer::frameBufferResized()
             detach();
     }
 }
-
-// create the VNC server object
-VncServer *
-VncServerParams::create()
-{
-    return new VncServer(this);
-}
-

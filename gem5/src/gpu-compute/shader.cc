@@ -38,6 +38,7 @@
 #include "arch/x86/isa_traits.hh"
 #include "arch/x86/linux/linux.hh"
 #include "base/chunk_generator.hh"
+#include "debug/GPUAgentDisp.hh"
 #include "debug/GPUDisp.hh"
 #include "debug/GPUMem.hh"
 #include "debug/GPUShader.hh"
@@ -51,20 +52,20 @@
 #include "mem/ruby/system/RubySystem.hh"
 #include "sim/sim_exit.hh"
 
-Shader::Shader(const Params *p) : ClockedObject(p),
+Shader::Shader(const Params &p) : ClockedObject(p),
     _activeCus(0), _lastInactiveTick(0), cpuThread(nullptr),
-    gpuTc(nullptr), cpuPointer(p->cpu_pointer),
+    gpuTc(nullptr), cpuPointer(p.cpu_pointer),
     tickEvent([this]{ execScheduledAdds(); }, "Shader scheduled adds event",
           false, Event::CPU_Tick_Pri),
-    timingSim(p->timing), hsail_mode(SIMT),
-    impl_kern_launch_acq(p->impl_kern_launch_acq),
-    impl_kern_end_rel(p->impl_kern_end_rel),
+    timingSim(p.timing), hsail_mode(SIMT),
+    impl_kern_launch_acq(p.impl_kern_launch_acq),
+    impl_kern_end_rel(p.impl_kern_end_rel),
     coissue_return(1),
-    trace_vgpr_all(1), n_cu((p->CUs).size()), n_wf(p->n_wf),
-    globalMemSize(p->globalmem),
-    nextSchedCu(0), sa_n(0), gpuCmdProc(*p->gpu_cmd_proc),
-    _dispatcher(*p->dispatcher),
-    max_valu_insts(p->max_valu_insts), total_valu_insts(0)
+    trace_vgpr_all(1), n_cu((p.CUs).size()), n_wf(p.n_wf),
+    globalMemSize(p.globalmem),
+    nextSchedCu(0), sa_n(0), gpuCmdProc(*p.gpu_cmd_proc),
+    _dispatcher(*p.dispatcher),
+    max_valu_insts(p.max_valu_insts), total_valu_insts(0)
 {
     gpuCmdProc.setShader(this);
     _dispatcher.setShader(this);
@@ -85,10 +86,10 @@ Shader::Shader(const Params *p) : ClockedObject(p),
     panic_if(n_wf <= 0, "Must have at least 1 WF Slot per SIMD");
 
     for (int i = 0; i < n_cu; ++i) {
-        cuList[i] = p->CUs[i];
+        cuList[i] = p.CUs[i];
         assert(i == cuList[i]->cu_id);
         cuList[i]->shader = this;
-        cuList[i]->idleCUTimeout = p->idlecu_timeout;
+        cuList[i]->idleCUTimeout = p.idlecu_timeout;
     }
 }
 
@@ -105,7 +106,7 @@ Shader::mmap(int length)
     Addr start;
 
     // round up length to the next page
-    length = roundUp(length, TheISA::PageBytes);
+    length = roundUp(length, X86ISA::PageBytes);
 
     Process *proc = gpuTc->getProcessPtr();
     auto mem_state = proc->memState;
@@ -152,12 +153,6 @@ Shader::updateContext(int cid) {
     assert(cpuPointer);
     gpuTc = cpuPointer->getContext(cid);
     assert(gpuTc);
-}
-
-Shader*
-ShaderParams::create()
-{
-    return new Shader(this);
 }
 
 void
@@ -237,6 +232,7 @@ Shader::dispatchWorkgroups(HSAQueueEntry *task)
     bool scheduledSomething = false;
     int cuCount = 0;
     int curCu = nextSchedCu;
+    int disp_count(0);
 
     while (cuCount < n_cu) {
         //Every time we try a CU, update nextSchedCu
@@ -250,6 +246,8 @@ Shader::dispatchWorkgroups(HSAQueueEntry *task)
         if (!task->dispComplete() && can_disp) {
             scheduledSomething = true;
             DPRINTF(GPUDisp, "Dispatching a workgroup to CU %d: WG %d\n",
+                            curCu, task->globalWgId());
+            DPRINTF(GPUAgentDisp, "Dispatching a workgroup to CU %d: WG %d\n",
                             curCu, task->globalWgId());
             DPRINTF(GPUWgLatency, "WG Begin cycle:%d wg:%d cu:%d\n",
                     curTick(), task->globalWgId(), curCu);
@@ -265,11 +263,14 @@ Shader::dispatchWorkgroups(HSAQueueEntry *task)
             cuList[curCu]->dispWorkgroup(task, num_wfs_in_wg);
 
             task->markWgDispatch();
+            ++disp_count;
         }
 
         ++cuCount;
         curCu = nextSchedCu;
     }
+
+     DPRINTF(GPUWgLatency, "Shader Dispatched %d Wgs\n", disp_count);
 
     return scheduledSomething;
 }

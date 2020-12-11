@@ -73,38 +73,40 @@ BaseCache::CacheResponsePort::CacheResponsePort(const std::string &_name,
 {
 }
 
-BaseCache::BaseCache(const BaseCacheParams *p, unsigned blk_size)
+BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
     : ClockedObject(p),
-      cpuSidePort (p->name + ".cpu_side_port", this, "CpuSidePort"),
-      memSidePort(p->name + ".mem_side_port", this, "MemSidePort"),
-      mshrQueue("MSHRs", p->mshrs, 0, p->demand_mshr_reserve), // see below
-      writeBuffer("write buffer", p->write_buffers, p->mshrs), // see below
-      tags(p->tags),
-      compressor(p->compressor),
-      prefetcher(p->prefetcher),
-      writeAllocator(p->write_allocator),
-      writebackClean(p->writeback_clean),
+      cpuSidePort (p.name + ".cpu_side_port", this, "CpuSidePort"),
+      memSidePort(p.name + ".mem_side_port", this, "MemSidePort"),
+      mshrQueue("MSHRs", p.mshrs, 0, p.demand_mshr_reserve), // see below
+      writeBuffer("write buffer", p.write_buffers, p.mshrs), // see below
+      tags(p.tags),
+      compressor(p.compressor),
+      prefetcher(p.prefetcher),
+      writeAllocator(p.write_allocator),
+      writebackClean(p.writeback_clean),
       tempBlockWriteback(nullptr),
       writebackTempBlockAtomicEvent([this]{ writebackTempBlockAtomic(); },
                                     name(), false,
                                     EventBase::Delayed_Writeback_Pri),
       blkSize(blk_size),
-      lookupLatency(p->tag_latency),
-      dataLatency(p->data_latency),
-      forwardLatency(p->tag_latency),
-      fillLatency(p->data_latency),
-      responseLatency(p->response_latency),
-      sequentialAccess(p->sequential_access),
-      numTarget(p->tgts_per_mshr),
+      lookupLatency(p.tag_latency),
+      dataLatency(p.data_latency),
+      forwardLatency(p.tag_latency),
+      fillLatency(p.data_latency),
+      responseLatency(p.response_latency),
+      sequentialAccess(p.sequential_access),
+      numTarget(p.tgts_per_mshr),
       forwardSnoops(true),
-      clusivity(p->clusivity),
-      isReadOnly(p->is_read_only),
+      clusivity(p.clusivity),
+      isReadOnly(p.is_read_only),
+      replaceExpansions(p.replace_expansions),
+      moveContractions(p.move_contractions),
       blocked(0),
       order(0),
       noTargetMSHR(nullptr),
-      missCount(p->max_miss_count),
-      addrRanges(p->addr_ranges.begin(), p->addr_ranges.end()),
-      system(p->system),
+      missCount(p.max_miss_count),
+      addrRanges(p.addr_ranges.begin(), p.addr_ranges.end()),
+      system(p.system),
       stats(*this)
 {
     // the MSHR queue has no reserve entries as we check the MSHR
@@ -318,9 +320,10 @@ BaseCache::handleTimingReqMiss(PacketPtr pkt, MSHR *mshr, CacheBlk *blk,
                 // internally, and have a sufficiently weak memory
                 // model, this is probably unnecessary, but at some
                 // point it must have seemed like we needed it...
-                assert((pkt->needsWritable() && !blk->isWritable()) ||
-                       pkt->req->isCacheMaintenance());
-                blk->status &= ~BlkReadable;
+                assert((pkt->needsWritable() &&
+                    !blk->isSet(CacheBlk::WritableBit)) ||
+                    pkt->req->isCacheMaintenance());
+                blk->clearCoherenceBits(CacheBlk::ReadableBit);
             }
             // Here we are using forward_time, modelling the latency of
             // a miss (outbound) just as forwardLatency, neglecting the
@@ -367,7 +370,7 @@ BaseCache::recvTimingReq(PacketPtr pkt)
         ppHit->notify(pkt);
 
         if (prefetcher && blk && blk->wasPrefetched()) {
-            blk->status &= ~BlkHWPrefetched;
+            blk->clearPrefetched();
         }
 
         handleTimingReqHit(pkt, blk, request_time);
@@ -476,7 +479,7 @@ BaseCache::recvTimingResp(PacketPtr pkt)
     if (blk && blk->isValid() && pkt->isClean() && !pkt->isInvalidate()) {
         // The block was marked not readable while there was a pending
         // cache maintenance operation, restore its flag.
-        blk->status |= BlkReadable;
+        blk->setCoherenceBits(CacheBlk::ReadableBit);
 
         // This was a cache clean operation (without invalidate)
         // and we have a copy of the block already. Since there
@@ -485,7 +488,8 @@ BaseCache::recvTimingResp(PacketPtr pkt)
         mshr->promoteReadable();
     }
 
-    if (blk && blk->isWritable() && !pkt->req->isCacheInvalidate()) {
+    if (blk && blk->isSet(CacheBlk::WritableBit) &&
+        !pkt->req->isCacheInvalidate()) {
         // If at this point the referenced block is writable and the
         // response is not a cache invalidate, we promote targets that
         // were deferred as we couldn't guarrantee a writable copy
@@ -498,7 +502,7 @@ BaseCache::recvTimingResp(PacketPtr pkt)
         // avoid later read getting stale data while write miss is
         // outstanding.. see comment in timingAccess()
         if (blk) {
-            blk->status &= ~BlkReadable;
+            blk->clearCoherenceBits(CacheBlk::ReadableBit);
         }
         mshrQueue.markPending(mshr);
         schedMemSideSendEvent(clockEdge() + pkt->payloadDelay);
@@ -551,7 +555,7 @@ BaseCache::recvAtomic(PacketPtr pkt)
     PacketList writebacks;
     bool satisfied = access(pkt, blk, lat, writebacks);
 
-    if (pkt->isClean() && blk && blk->isDirty()) {
+    if (pkt->isClean() && blk && blk->isSet(CacheBlk::DirtyBit)) {
         // A cache clean opearation is looking for a dirty
         // block. If a dirty block is encountered a WriteClean
         // will update any copies to the path to the memory
@@ -641,7 +645,7 @@ BaseCache::functionalAccess(PacketPtr pkt, bool from_cpu_side)
     // data we have is dirty if marked as such or if we have an
     // in-service MSHR that is pending a modified line
     bool have_dirty =
-        have_data && (blk->isDirty() ||
+        have_data && (blk->isSet(CacheBlk::DirtyBit) ||
                       (mshr && mshr->inService && mshr->isPendingModified()));
 
     bool done = have_dirty ||
@@ -709,7 +713,7 @@ BaseCache::cmpAndSwap(CacheBlk *blk, PacketPtr pkt)
 
     if (overwrite_mem) {
         std::memcpy(blk_data, &overwrite_val, pkt->getSize());
-        blk->status |= BlkDirty;
+        blk->setCoherenceBits(CacheBlk::DirtyBit);
     }
 }
 
@@ -805,8 +809,8 @@ BaseCache::handleEvictions(std::vector<CacheBlk*> &evict_blks,
             if (mshr) {
                 // Must be an outstanding upgrade or clean request on a block
                 // we're about to replace
-                assert((!blk->isWritable() && mshr->needsWritable()) ||
-                       mshr->isCleaning());
+                assert((!blk->isSet(CacheBlk::WritableBit) &&
+                    mshr->needsWritable()) || mshr->isCleaning());
                 return false;
             }
         }
@@ -829,18 +833,13 @@ BaseCache::handleEvictions(std::vector<CacheBlk*> &evict_blks,
 }
 
 bool
-BaseCache::updateCompressionData(CacheBlk *blk, const uint64_t* data,
+BaseCache::updateCompressionData(CacheBlk *&blk, const uint64_t* data,
                                  PacketList &writebacks)
 {
     // tempBlock does not exist in the tags, so don't do anything for it.
     if (blk == tempBlock) {
         return true;
     }
-
-    // Get superblock of the given block
-    CompressionBlk* compression_blk = static_cast<CompressionBlk*>(blk);
-    const SuperBlk* superblock = static_cast<const SuperBlk*>(
-        compression_blk->getSectorBlock());
 
     // The compressor is called to compress the updated data, so that its
     // metadata can be updated.
@@ -850,29 +849,66 @@ BaseCache::updateCompressionData(CacheBlk *blk, const uint64_t* data,
         compressor->compress(data, compression_lat, decompression_lat);
     std::size_t compression_size = comp_data->getSizeBits();
 
-    // If block's compression factor increased, it may not be co-allocatable
-    // anymore. If so, some blocks might need to be evicted to make room for
-    // the bigger block
-
     // Get previous compressed size
-    const std::size_t M5_VAR_USED prev_size = compression_blk->getSizeBits();
+    CompressionBlk* compression_blk = static_cast<CompressionBlk*>(blk);
+    M5_VAR_USED const std::size_t prev_size = compression_blk->getSizeBits();
 
-    // Check if new data is co-allocatable
-    const bool is_co_allocatable = superblock->isCompressed(compression_blk) &&
-        superblock->canCoAllocate(compression_size);
+    // If compressed size didn't change enough to modify its co-allocatability
+    // there is nothing to do. Otherwise we may be facing a data expansion
+    // (block passing from more compressed to less compressed state), or a
+    // data contraction (less to more).
+    bool is_data_expansion = false;
+    bool is_data_contraction = false;
+    const CompressionBlk::OverwriteType overwrite_type =
+        compression_blk->checkExpansionContraction(compression_size);
+    string op_name = "";
+    if (overwrite_type == CompressionBlk::DATA_EXPANSION) {
+        op_name = "expansion";
+        is_data_expansion = true;
+    } else if ((overwrite_type == CompressionBlk::DATA_CONTRACTION) &&
+        moveContractions) {
+        op_name = "contraction";
+        is_data_contraction = true;
+    }
 
-    // If block was compressed, possibly co-allocated with other blocks, and
-    // cannot be co-allocated anymore, one or more blocks must be evicted to
-    // make room for the expanded block. As of now we decide to evict the co-
-    // allocated blocks to make room for the expansion, but other approaches
-    // that take the replacement data of the superblock into account may
-    // generate better results
-    const bool was_compressed = compression_blk->isCompressed();
-    if (was_compressed && !is_co_allocatable) {
+    // If block changed compression state, it was possibly co-allocated with
+    // other blocks and cannot be co-allocated anymore, so one or more blocks
+    // must be evicted to make room for the expanded/contracted block
+    std::vector<CacheBlk*> evict_blks;
+    if (is_data_expansion || is_data_contraction) {
         std::vector<CacheBlk*> evict_blks;
-        for (const auto& sub_blk : superblock->blks) {
-            if (sub_blk->isValid() && (compression_blk != sub_blk)) {
-                evict_blks.push_back(sub_blk);
+        bool victim_itself = false;
+        CacheBlk *victim = nullptr;
+        if (replaceExpansions || is_data_contraction) {
+            victim = tags->findVictim(regenerateBlkAddr(blk),
+                blk->isSecure(), compression_size, evict_blks);
+
+            // It is valid to return nullptr if there is no victim
+            if (!victim) {
+                return false;
+            }
+
+            // If the victim block is itself the block won't need to be moved,
+            // and the victim should not be evicted
+            if (blk == victim) {
+                victim_itself = true;
+                auto it = std::find_if(evict_blks.begin(), evict_blks.end(),
+                    [&blk](CacheBlk* evict_blk){ return evict_blk == blk; });
+                evict_blks.erase(it);
+            }
+
+            // Print victim block's information
+            DPRINTF(CacheRepl, "Data %s replacement victim: %s\n",
+                op_name, victim->print());
+        } else {
+            // If we do not move the expanded block, we must make room for
+            // the expansion to happen, so evict every co-allocated block
+            const SuperBlk* superblock = static_cast<const SuperBlk*>(
+                compression_blk->getSectorBlock());
+            for (auto& sub_blk : superblock->blks) {
+                if (sub_blk->isValid() && (blk != sub_blk)) {
+                    evict_blks.push_back(sub_blk);
+                }
             }
         }
 
@@ -881,19 +917,25 @@ BaseCache::updateCompressionData(CacheBlk *blk, const uint64_t* data,
             return false;
         }
 
-        // Update the number of data expansions
+        DPRINTF(CacheComp, "Data %s: [%s] from %d to %d bits\n",
+                op_name, blk->print(), prev_size, compression_size);
+
+        if (!victim_itself && (replaceExpansions || is_data_contraction)) {
+            // Move the block's contents to the invalid block so that it now
+            // co-allocates with the other existing superblock entry
+            tags->moveBlock(blk, victim);
+            blk = victim;
+            compression_blk = static_cast<CompressionBlk*>(blk);
+        }
+    }
+
+    // Update the number of data expansions/contractions
+    if (is_data_expansion) {
         stats.dataExpansions++;
-
-        DPRINTF(CacheComp, "Data expansion: expanding [%s] from %d to %d bits"
-                "\n", blk->print(), prev_size, compression_size);
+    } else if (is_data_contraction) {
+        stats.dataContractions++;
     }
 
-    // We always store compressed blocks when possible
-    if (is_co_allocatable) {
-        compression_blk->setCompressed();
-    } else {
-        compression_blk->setUncompressed();
-    }
     compression_blk->setSizeBits(compression_size);
     compression_blk->setDecompressionLatency(decompression_lat);
 
@@ -912,7 +954,7 @@ BaseCache::satisfyRequest(PacketPtr pkt, CacheBlk *blk, bool, bool)
     // can satisfy a following ReadEx anyway since we can rely on the
     // Read requestor(s) to have buffered the ReadEx snoop and to
     // invalidate their blocks after receiving them.
-    // assert(!pkt->needsWritable() || blk->isWritable());
+    // assert(!pkt->needsWritable() || blk->isSet(CacheBlk::WritableBit));
     assert(pkt->getOffset(blkSize) + pkt->getSize() <= blkSize);
 
     // Check RMW operations first since both isRead() and
@@ -929,7 +971,7 @@ BaseCache::satisfyRequest(PacketPtr pkt, CacheBlk *blk, bool, bool)
             (*(pkt->getAtomicOp()))(blk_data);
 
             // set block status to dirty
-            blk->status |= BlkDirty;
+            blk->setCoherenceBits(CacheBlk::DirtyBit);
         } else {
             cmpAndSwap(blk, pkt);
         }
@@ -938,7 +980,7 @@ BaseCache::satisfyRequest(PacketPtr pkt, CacheBlk *blk, bool, bool)
         // note that the line may be also be considered writable in
         // downstream caches along the path to memory, but always
         // Exclusive, and never Modified
-        assert(blk->isWritable());
+        assert(blk->isSet(CacheBlk::WritableBit));
         // Write or WriteLine at the first cache with block in writable state
         if (blk->checkWrite(pkt)) {
             pkt->writeDataToBlock(blk->data, blkSize);
@@ -947,7 +989,7 @@ BaseCache::satisfyRequest(PacketPtr pkt, CacheBlk *blk, bool, bool)
         // Modified state) even if we are a failed StoreCond so we
         // supply data to any snoops that have appended themselves to
         // this cache before knowing the store will fail.
-        blk->status |= BlkDirty;
+        blk->setCoherenceBits(CacheBlk::DirtyBit);
         DPRINTF(CacheVerbose, "%s for %s (write)\n", __func__, pkt->print());
     } else if (pkt->isRead()) {
         if (pkt->isLLSC()) {
@@ -961,15 +1003,15 @@ BaseCache::satisfyRequest(PacketPtr pkt, CacheBlk *blk, bool, bool)
         // sanity check
         assert(!pkt->hasSharers());
 
-        if (blk->isDirty()) {
+        if (blk->isSet(CacheBlk::DirtyBit)) {
             // we were in the Owned state, and a cache above us that
             // has the line in Shared state needs to be made aware
             // that the data it already has is in fact dirty
             pkt->setCacheResponding();
-            blk->status &= ~BlkDirty;
+            blk->clearCoherenceBits(CacheBlk::DirtyBit);
         }
     } else if (pkt->isClean()) {
-        blk->status &= ~BlkDirty;
+        blk->clearCoherenceBits(CacheBlk::DirtyBit);
     } else {
         assert(pkt->isInvalidate());
         invalidateBlock(blk);
@@ -1137,7 +1179,7 @@ BaseCache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
                 return false;
             }
 
-            blk->status |= BlkReadable;
+            blk->setCoherenceBits(CacheBlk::ReadableBit);
         } else if (compressor) {
             // This is an overwrite to an existing block, therefore we need
             // to check for data expansion (i.e., block was compressed with
@@ -1153,14 +1195,14 @@ BaseCache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
         // only mark the block dirty if we got a writeback command,
         // and leave it as is for a clean writeback
         if (pkt->cmd == MemCmd::WritebackDirty) {
-            // TODO: the coherent cache can assert(!blk->isDirty());
-            blk->status |= BlkDirty;
+            // TODO: the coherent cache can assert that the dirty bit is set
+            blk->setCoherenceBits(CacheBlk::DirtyBit);
         }
         // if the packet does not have sharers, it is passing
         // writable, and we got the writeback in Modified or Exclusive
         // state, if not we are in the Owned or Shared state
         if (!pkt->hasSharers()) {
-            blk->status |= BlkWritable;
+            blk->setCoherenceBits(CacheBlk::WritableBit);
         }
         // nothing else to do; writeback doesn't expect response
         assert(!pkt->needsResponse());
@@ -1213,7 +1255,7 @@ BaseCache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
                     return false;
                 }
 
-                blk->status |= BlkReadable;
+                blk->setCoherenceBits(CacheBlk::ReadableBit);
             }
         } else if (compressor) {
             // This is an overwrite to an existing block, therefore we need
@@ -1231,9 +1273,9 @@ BaseCache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
         // write clean operation and the block is already in this
         // cache, we need to update the data and the block flags
         assert(blk);
-        // TODO: the coherent cache can assert(!blk->isDirty());
+        // TODO: the coherent cache can assert that the dirty bit is set
         if (!pkt->writeThrough()) {
-            blk->status |= BlkDirty;
+            blk->setCoherenceBits(CacheBlk::DirtyBit);
         }
         // nothing else to do; writeback doesn't expect response
         assert(!pkt->needsResponse());
@@ -1250,8 +1292,9 @@ BaseCache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
 
         // If this a write-through packet it will be sent to cache below
         return !pkt->writeThrough();
-    } else if (blk && (pkt->needsWritable() ? blk->isWritable() :
-                       blk->isReadable())) {
+    } else if (blk && (pkt->needsWritable() ?
+            blk->isSet(CacheBlk::WritableBit) :
+            blk->isSet(CacheBlk::ReadableBit))) {
         // OK to satisfy access
         incHitCount(pkt);
 
@@ -1293,8 +1336,8 @@ BaseCache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
 void
 BaseCache::maintainClusivity(bool from_cache, CacheBlk *blk)
 {
-    if (from_cache && blk && blk->isValid() && !blk->isDirty() &&
-        clusivity == Enums::mostly_excl) {
+    if (from_cache && blk && blk->isValid() &&
+        !blk->isSet(CacheBlk::DirtyBit) && clusivity == Enums::mostly_excl) {
         // if we have responded to a cache, and our block is still
         // valid, but not dirty, and this cache is mostly exclusive
         // with respect to the cache above, drop the block
@@ -1310,7 +1353,7 @@ BaseCache::handleFill(PacketPtr pkt, CacheBlk *blk, PacketList &writebacks,
     Addr addr = pkt->getAddr();
     bool is_secure = pkt->isSecure();
 #if TRACING_ON
-    CacheBlk::State old_state = blk ? blk->status : 0;
+    const std::string old_state = blk ? blk->print() : "";
 #endif
 
     // When handling a fill, we should have no writes to this line.
@@ -1345,7 +1388,7 @@ BaseCache::handleFill(PacketPtr pkt, CacheBlk *blk, PacketList &writebacks,
     assert(blk->isSecure() == is_secure);
     assert(regenerateBlkAddr(blk) == addr);
 
-    blk->status |= BlkReadable;
+    blk->setCoherenceBits(CacheBlk::ReadableBit);
 
     // sanity check for whole-line writes, which should always be
     // marked as writable as part of the fill, and then later marked
@@ -1365,14 +1408,14 @@ BaseCache::handleFill(PacketPtr pkt, CacheBlk *blk, PacketList &writebacks,
         // we could get a writable line from memory (rather than a
         // cache) even in a read-only cache, note that we set this bit
         // even for a read-only cache, possibly revisit this decision
-        blk->status |= BlkWritable;
+        blk->setCoherenceBits(CacheBlk::WritableBit);
 
         // check if we got this via cache-to-cache transfer (i.e., from a
         // cache that had the block in Modified or Owned state)
         if (pkt->cacheResponding()) {
             // we got the block in Modified state, and invalidated the
             // owners copy
-            blk->status |= BlkDirty;
+            blk->setCoherenceBits(CacheBlk::DirtyBit);
 
             chatty_assert(!isReadOnly, "Should never see dirty snoop response "
                           "in read-only cache %s\n", name());
@@ -1380,7 +1423,7 @@ BaseCache::handleFill(PacketPtr pkt, CacheBlk *blk, PacketList &writebacks,
         }
     }
 
-    DPRINTF(Cache, "Block addr %#llx (%s) moving from state %x to %s\n",
+    DPRINTF(Cache, "Block addr %#llx (%s) moving from %s to %s\n",
             addr, is_secure ? "s" : "ns", old_state, blk->print());
 
     // if we got new data, copy it in (checking for a read response
@@ -1443,15 +1486,15 @@ BaseCache::allocateBlock(const PacketPtr pkt, PacketList &writebacks)
         return nullptr;
     }
 
-    // If using a compressor, set compression data. This must be done before
-    // block insertion, as compressed tags use this information.
+    // Insert new block at victimized entry
+    tags->insertBlock(pkt, victim);
+
+    // If using a compressor, set compression data. This must be done after
+    // insertion, as the compression bit may be set.
     if (compressor) {
         compressor->setSizeBits(victim, blk_size_bits);
         compressor->setDecompressionLatency(victim, decompression_lat);
     }
-
-    // Insert new block at victimized entry
-    tags->insertBlock(pkt, victim);
 
     return victim;
 }
@@ -1487,7 +1530,8 @@ BaseCache::writebackBlk(CacheBlk *blk)
 {
     chatty_assert(!isReadOnly || writebackClean,
                   "Writeback from read-only cache");
-    assert(blk && blk->isValid() && (blk->isDirty() || writebackClean));
+    assert(blk && blk->isValid() &&
+        (blk->isSet(CacheBlk::DirtyBit) || writebackClean));
 
     stats.writebacks[Request::wbRequestorId]++;
 
@@ -1497,26 +1541,27 @@ BaseCache::writebackBlk(CacheBlk *blk)
     if (blk->isSecure())
         req->setFlags(Request::SECURE);
 
-    req->taskId(blk->task_id);
+    req->taskId(blk->getTaskId());
 
     PacketPtr pkt =
-        new Packet(req, blk->isDirty() ?
+        new Packet(req, blk->isSet(CacheBlk::DirtyBit) ?
                    MemCmd::WritebackDirty : MemCmd::WritebackClean);
 
     DPRINTF(Cache, "Create Writeback %s writable: %d, dirty: %d\n",
-            pkt->print(), blk->isWritable(), blk->isDirty());
+        pkt->print(), blk->isSet(CacheBlk::WritableBit),
+        blk->isSet(CacheBlk::DirtyBit));
 
-    if (blk->isWritable()) {
+    if (blk->isSet(CacheBlk::WritableBit)) {
         // not asserting shared means we pass the block in modified
         // state, mark our own block non-writeable
-        blk->status &= ~BlkWritable;
+        blk->clearCoherenceBits(CacheBlk::WritableBit);
     } else {
         // we are in the Owned state, tell the receiver
         pkt->setHasSharers();
     }
 
     // make sure the block is not marked dirty
-    blk->status &= ~BlkDirty;
+    blk->clearCoherenceBits(CacheBlk::DirtyBit);
 
     pkt->allocate();
     pkt->setDataFromBlock(blk->data, blkSize);
@@ -1539,7 +1584,7 @@ BaseCache::writecleanBlk(CacheBlk *blk, Request::Flags dest, PacketId id)
     if (blk->isSecure()) {
         req->setFlags(Request::SECURE);
     }
-    req->taskId(blk->task_id);
+    req->taskId(blk->getTaskId());
 
     PacketPtr pkt = new Packet(req, MemCmd::WriteClean, blkSize, id);
 
@@ -1549,19 +1594,19 @@ BaseCache::writecleanBlk(CacheBlk *blk, Request::Flags dest, PacketId id)
     }
 
     DPRINTF(Cache, "Create %s writable: %d, dirty: %d\n", pkt->print(),
-            blk->isWritable(), blk->isDirty());
+            blk->isSet(CacheBlk::WritableBit), blk->isSet(CacheBlk::DirtyBit));
 
-    if (blk->isWritable()) {
+    if (blk->isSet(CacheBlk::WritableBit)) {
         // not asserting shared means we pass the block in modified
         // state, mark our own block non-writeable
-        blk->status &= ~BlkWritable;
+        blk->clearCoherenceBits(CacheBlk::WritableBit);
     } else {
         // we are in the Owned state, tell the receiver
         pkt->setHasSharers();
     }
 
     // make sure the block is not marked dirty
-    blk->status &= ~BlkDirty;
+    blk->clearCoherenceBits(CacheBlk::DirtyBit);
 
     pkt->allocate();
     pkt->setDataFromBlock(blk->data, blkSize);
@@ -1591,7 +1636,8 @@ BaseCache::memInvalidate()
 bool
 BaseCache::isDirty() const
 {
-    return tags->anyBlk([](CacheBlk &blk) { return blk.isDirty(); });
+    return tags->anyBlk([](CacheBlk &blk) {
+        return blk.isSet(CacheBlk::DirtyBit); });
 }
 
 bool
@@ -1603,13 +1649,13 @@ BaseCache::coalesce() const
 void
 BaseCache::writebackVisitor(CacheBlk &blk)
 {
-    if (blk.isDirty()) {
+    if (blk.isSet(CacheBlk::DirtyBit)) {
         assert(blk.isValid());
 
         RequestPtr request = std::make_shared<Request>(
             regenerateBlkAddr(&blk), blkSize, 0, Request::funcRequestorId);
 
-        request->taskId(blk.task_id);
+        request->taskId(blk.getTaskId());
         if (blk.isSecure()) {
             request->setFlags(Request::SECURE);
         }
@@ -1619,19 +1665,19 @@ BaseCache::writebackVisitor(CacheBlk &blk)
 
         memSidePort.sendFunctional(&packet);
 
-        blk.status &= ~BlkDirty;
+        blk.clearCoherenceBits(CacheBlk::DirtyBit);
     }
 }
 
 void
 BaseCache::invalidateVisitor(CacheBlk &blk)
 {
-    if (blk.isDirty())
+    if (blk.isSet(CacheBlk::DirtyBit))
         warn_once("Invalidating dirty cache lines. " \
                   "Expect things to break.\n");
 
     if (blk.isValid()) {
-        assert(!blk.isDirty());
+        assert(!blk.isSet(CacheBlk::DirtyBit));
         invalidateBlock(&blk);
     }
 }
@@ -1707,7 +1753,7 @@ BaseCache::sendMSHRQueuePacket(MSHR* mshr)
     // as forwarded packets may already have existing state
     pkt->pushSenderState(mshr);
 
-    if (pkt->isClean() && blk && blk->isDirty()) {
+    if (pkt->isClean() && blk && blk->isSet(CacheBlk::DirtyBit)) {
         // A cache clean opearation is looking for a dirty block. Mark
         // the packet so that the destination xbar can determine that
         // there will be a follow-up write packet as well.
@@ -1738,7 +1784,7 @@ BaseCache::sendMSHRQueuePacket(MSHR* mshr)
             pkt->cacheResponding();
         markInService(mshr, pending_modified_resp);
 
-        if (pkt->isClean() && blk && blk->isDirty()) {
+        if (pkt->isClean() && blk && blk->isSet(CacheBlk::DirtyBit)) {
             // A cache clean opearation is looking for a dirty
             // block. If a dirty block is encountered a WriteClean
             // will update any copies to the path to the memory
@@ -2050,6 +2096,7 @@ BaseCache::CacheStats::CacheStats(BaseCache &c)
     replacements(this, "replacements", "number of replacements"),
 
     dataExpansions(this, "data_expansions", "number of data expansions"),
+    dataContractions(this, "data_contractions", "number of data contractions"),
     cmd(MemCmd::NUM_MEM_CMDS)
 {
     for (int idx = 0; idx < MemCmd::NUM_MEM_CMDS; ++idx)
@@ -2264,10 +2311,12 @@ BaseCache::CacheStats::regStats()
     overallAvgMshrUncacheableLatency =
         overallMshrUncacheableLatency / overallMshrUncacheable;
     for (int i = 0; i < max_requestors; i++) {
-        overallAvgMshrUncacheableLatency.subname(i, system->getRequestorName(i));
+        overallAvgMshrUncacheableLatency.subname(i,
+            system->getRequestorName(i));
     }
 
     dataExpansions.flags(nozero | nonan);
+    dataContractions.flags(nozero | nonan);
 }
 
 void
@@ -2320,7 +2369,7 @@ BaseCache::CpuSidePort::recvTimingReq(PacketPtr pkt)
     if (cache->system->bypassCaches()) {
         // Just forward the packet if caches are disabled.
         // @todo This should really enqueue the packet rather
-        bool M5_VAR_USED success = cache->memSidePort.sendTimingReq(pkt);
+        M5_VAR_USED bool success = cache->memSidePort.sendTimingReq(pkt);
         assert(success);
         return true;
     } else if (tryTiming(pkt)) {
@@ -2490,10 +2539,4 @@ WriteAllocator::updateMode(Addr write_addr, unsigned write_size,
         resetDelay(blk_addr);
     }
     nextAddr = write_addr + write_size;
-}
-
-WriteAllocator*
-WriteAllocatorParams::create()
-{
-    return new WriteAllocator(this);
 }

@@ -214,7 +214,7 @@ def define_defaults(defaults):
                                                       os.pardir,
                                                       os.pardir))
     defaults.result_path = os.path.join(os.getcwd(), 'testing-results')
-    defaults.resource_url = 'http://dist.gem5.org/dist/v20-1'
+    defaults.resource_url = 'http://dist.gem5.org/dist/develop'
     defaults.resource_path = os.path.abspath(os.path.join(defaults.base_dir,
                                             'tests',
                                             'gem5',
@@ -233,6 +233,7 @@ def define_constants(constants):
 
     constants.isa_tag_type = 'isa'
     constants.x86_tag = 'X86'
+    constants.gcn3_x86_tag = 'GCN3_X86'
     constants.sparc_tag = 'SPARC'
     constants.riscv_tag = 'RISCV'
     constants.arm_tag = 'ARM'
@@ -256,6 +257,7 @@ def define_constants(constants):
     constants.supported_tags = {
         constants.isa_tag_type : (
             constants.x86_tag,
+            constants.gcn3_x86_tag,
             constants.sparc_tag,
             constants.riscv_tag,
             constants.arm_tag,
@@ -283,6 +285,7 @@ def define_constants(constants):
     constants.target_host = {
         constants.arm_tag   : (constants.host_arm_tag,),
         constants.x86_tag   : (constants.host_x86_64_tag,),
+        constants.gcn3_x86_tag : (constants.host_x86_64_tag,),
         constants.sparc_tag : (constants.host_x86_64_tag,),
         constants.riscv_tag : (constants.host_x86_64_tag,),
         constants.mips_tag  : (constants.host_x86_64_tag,),
@@ -486,6 +489,8 @@ def define_common_args(config):
     '''
     global common_args
 
+    parse_comma_separated_string = lambda st: st.split(',')
+
     # A list of common arguments/flags used across cli parsers.
     common_args = [
         Argument(
@@ -503,20 +508,23 @@ def define_common_args(config):
             help='A tag comparison used to select tests.'),
         Argument(
             '--isa',
-            action='append',
+            action='extend',
             default=[],
+            type=parse_comma_separated_string,
             help="Only tests that are valid with one of these ISAs. "
                  "Comma separated."),
         Argument(
             '--variant',
-            action='append',
+            action='extend',
             default=[],
+            type=parse_comma_separated_string,
             help="Only tests that are valid with one of these binary variants"
                  "(e.g., opt, debug). Comma separated."),
         Argument(
             '--length',
-            action='append',
+            action='extend',
             default=[],
+            type=parse_comma_separated_string,
             help="Only tests that are one of these lengths. Comma separated."),
         Argument(
             '--host',
@@ -596,6 +604,11 @@ def define_common_args(config):
 
 @add_metaclass(abc.ABCMeta)
 class ArgParser(object):
+    class ExtendAction(argparse.Action):
+        def __call__(self, parser, namespace, values, option_string=None):
+            items = getattr(namespace, self.dest, [])
+            items.extend(values)
+            setattr(namespace, self.dest, items)
 
     def __init__(self, parser):
         # Copy public methods of the parser.
@@ -603,6 +616,7 @@ class ArgParser(object):
             if not attr.startswith('_'):
                 setattr(self, attr, getattr(parser, attr))
         self.parser = parser
+        self.parser.register('action', 'extend', ArgParser.ExtendAction)
         self.add_argument = self.parser.add_argument
 
         # Argument will be added to all parsers and subparsers.

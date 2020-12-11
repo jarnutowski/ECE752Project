@@ -98,11 +98,8 @@ class O3ThreadContext : public ThreadContext
     /** Pointer to the thread state that this TC corrseponds to. */
     O3ThreadState<Impl> *thread;
 
-    /** Returns a pointer to the ITB. */
-    BaseTLB *getITBPtr() override { return cpu->itb; }
-
-    /** Returns a pointer to the DTB. */
-    BaseTLB *getDTBPtr() override { return cpu->dtb; }
+    /** Returns a pointer to the MMU. */
+    BaseMMU *getMMUPtr() override { return cpu->mmu; }
 
     CheckerCPU *getCheckerCpuPtr() override { return NULL; }
 
@@ -417,13 +414,6 @@ class O3ThreadContext : public ThreadContext
     setStCondFailures(unsigned sc_failures) override
     {
         thread->storeCondFailures = sc_failures;
-    }
-
-    /** Executes a syscall in SE mode. */
-    void
-    syscall() override
-    {
-        return cpu->syscall(thread->threadId());
     }
 
     /** Reads the funcExeInst counter. */

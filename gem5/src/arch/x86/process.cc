@@ -48,6 +48,7 @@
 #include "arch/x86/isa_traits.hh"
 #include "arch/x86/regs/misc.hh"
 #include "arch/x86/regs/segment.hh"
+#include "arch/x86/se_workload.hh"
 #include "arch/x86/types.hh"
 #include "base/loader/elf_object.hh"
 #include "base/loader/object_file.hh"
@@ -76,12 +77,13 @@ typedef MultiLevelPageTable<LongModePTE<47, 39>,
                             LongModePTE<29, 21>,
                             LongModePTE<20, 12> > ArchPageTable;
 
-X86Process::X86Process(ProcessParams *params, ::Loader::ObjectFile *objFile) :
-    Process(params, params->useArchPT ?
+X86Process::X86Process(const ProcessParams &params,
+                       ::Loader::ObjectFile *objFile) :
+    Process(params, params.useArchPT ?
                     static_cast<EmulationPageTable *>(
-                            new ArchPageTable(params->name, params->pid,
-                                              params->system, PageBytes)) :
-                    new EmulationPageTable(params->name, params->pid,
+                            new ArchPageTable(params.name, params.pid,
+                                              params.system, PageBytes)) :
+                    new EmulationPageTable(params.name, params.pid,
                                            PageBytes),
             objFile)
 {
@@ -95,7 +97,7 @@ void X86Process::clone(ThreadContext *old_tc, ThreadContext *new_tc,
     *process = *this;
 }
 
-X86_64Process::X86_64Process(ProcessParams *params,
+X86_64Process::X86_64Process(const ProcessParams &params,
                              ::Loader::ObjectFile *objFile) :
     X86Process(params, objFile)
 {
@@ -116,7 +118,7 @@ X86_64Process::X86_64Process(ProcessParams *params,
 }
 
 
-I386Process::I386Process(ProcessParams *params,
+I386Process::I386Process(const ProcessParams &params,
                          ::Loader::ObjectFile *objFile) :
     X86Process(params, objFile)
 {
@@ -473,8 +475,8 @@ X86_64Process::initState()
 
         /* System call handler */
         uint8_t syscallBlob[] = {
-            // mov    %rax, (0xffffc90000005600)
-            0x48, 0xa3, 0x00, 0x60, 0x00,
+            // mov    %rax, (0xffffc90000007000)
+            0x48, 0xa3, 0x00, 0x70, 0x00,
             0x00, 0x00, 0xc9, 0xff, 0xff,
             // sysret
             0x48, 0x0f, 0x07
@@ -485,8 +487,8 @@ X86_64Process::initState()
 
         /** Page fault handler */
         uint8_t faultBlob[] = {
-            // mov    %rax, (0xffffc90000005700)
-            0x48, 0xa3, 0x00, 0x61, 0x00,
+            // mov    %rax, (0xffffc90000007000)
+            0x48, 0xa3, 0x00, 0x70, 0x00,
             0x00, 0x00, 0xc9, 0xff, 0xff,
             // add    $0x8, %rsp # skip error
             0x48, 0x83, 0xc4, 0x08,

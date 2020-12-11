@@ -53,13 +53,7 @@
 
 using namespace std;
 
-VIPERCoalescer *
-VIPERCoalescerParams::create()
-{
-    return new VIPERCoalescer(this);
-}
-
-VIPERCoalescer::VIPERCoalescer(const Params *p)
+VIPERCoalescer::VIPERCoalescer(const Params &p)
     : GPUCoalescer(p),
       m_cache_inv_pkt(nullptr),
       m_num_pending_invs(0)
@@ -76,20 +70,19 @@ RequestStatus
 VIPERCoalescer::makeRequest(PacketPtr pkt)
 {
     // VIPER only supports following memory request types
-    //    MemSyncReq & Acquire: TCP cache invalidation
+    //    MemSyncReq & INV_L1 : TCP cache invalidation
     //    ReadReq             : cache read
     //    WriteReq            : cache write
     //    AtomicOp            : cache atomic
     //
     // VIPER does not expect MemSyncReq & Release since in GCN3, compute unit
     // does not specify an equivalent type of memory request.
-    // TODO: future patches should rename Acquire and Release
-    assert((pkt->cmd == MemCmd::MemSyncReq && pkt->req->isAcquire()) ||
+    assert((pkt->cmd == MemCmd::MemSyncReq && pkt->req->isInvL1()) ||
             pkt->cmd == MemCmd::ReadReq ||
             pkt->cmd == MemCmd::WriteReq ||
             pkt->isAtomicOp());
 
-    if (pkt->req->isAcquire() && m_cache_inv_pkt) {
+    if (pkt->req->isInvL1() && m_cache_inv_pkt) {
         // In VIPER protocol, the coalescer is not able to handle two or
         // more cache invalidation requests at a time. Cache invalidation
         // requests must be serialized to ensure that all stale data in
@@ -100,8 +93,8 @@ VIPERCoalescer::makeRequest(PacketPtr pkt)
 
     GPUCoalescer::makeRequest(pkt);
 
-    if (pkt->req->isAcquire()) {
-        // In VIPER protocol, a compute unit sends a MemSyncReq with Acquire
+    if (pkt->req->isInvL1()) {
+        // In VIPER protocol, a compute unit sends a MemSyncReq with INV_L1
         // flag to invalidate TCP. Upon receiving a request of this type,
         // VIPERCoalescer starts a cache walk to invalidate all valid entries
         // in TCP. The request is completed once all entries are invalidated.
@@ -238,19 +231,28 @@ VIPERCoalescer::writeCompleteCallback(Addr addr, uint64_t instSeqNum)
     assert(m_writeCompletePktMap.count(key) == 1 &&
            !m_writeCompletePktMap[key].empty());
 
-    for (auto writeCompletePkt : m_writeCompletePktMap[key]) {
-        if (makeLineAddress(writeCompletePkt->getAddr()) == addr) {
-            RubyPort::SenderState *ss =
-                safe_cast<RubyPort::SenderState *>
-                    (writeCompletePkt->senderState);
-            MemResponsePort *port = ss->port;
-            assert(port != NULL);
+    m_writeCompletePktMap[key].erase(
+        std::remove_if(
+            m_writeCompletePktMap[key].begin(),
+            m_writeCompletePktMap[key].end(),
+            [addr](PacketPtr writeCompletePkt) -> bool {
+                if (makeLineAddress(writeCompletePkt->getAddr()) == addr) {
+                    RubyPort::SenderState *ss =
+                        safe_cast<RubyPort::SenderState *>
+                            (writeCompletePkt->senderState);
+                    MemResponsePort *port = ss->port;
+                    assert(port != NULL);
 
-            writeCompletePkt->senderState = ss->predecessor;
-            delete ss;
-            port->hitCallback(writeCompletePkt);
-        }
-    }
+                    writeCompletePkt->senderState = ss->predecessor;
+                    delete ss;
+                    port->hitCallback(writeCompletePkt);
+                    return true;
+                }
+                return false;
+            }
+        ),
+        m_writeCompletePktMap[key].end()
+    );
 
     trySendRetries();
 
@@ -267,13 +269,13 @@ VIPERCoalescer::invTCPCallback(Addr addr)
 
     if (m_num_pending_invs == 0) {
         std::vector<PacketPtr> pkt_list { m_cache_inv_pkt };
-        completeHitCallback(pkt_list);
         m_cache_inv_pkt = nullptr;
+        completeHitCallback(pkt_list);
     }
 }
 
 /**
-  * Invalidate TCP (Acquire)
+  * Invalidate TCP
   */
 void
 VIPERCoalescer::invTCP()

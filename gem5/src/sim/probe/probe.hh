@@ -102,7 +102,7 @@ class ProbeListenerObject : public SimObject
     std::vector<ProbeListener *> listeners;
 
   public:
-    ProbeListenerObject(const ProbeListenerObjectParams *params);
+    ProbeListenerObject(const ProbeListenerObjectParams &params);
     virtual ~ProbeListenerObject();
     ProbeManager* getProbeManager() { return manager; }
 };
@@ -119,6 +119,10 @@ class ProbeListener
   public:
     ProbeListener(ProbeManager *manager, const std::string &name);
     virtual ~ProbeListener();
+    ProbeListener(const ProbeListener& other) = delete;
+    ProbeListener& operator=(const ProbeListener& other) = delete;
+    ProbeListener(ProbeListener&& other) noexcept = delete;
+    ProbeListener& operator=(ProbeListener&& other) noexcept = delete;
 
   protected:
     ProbeManager *const manager;
@@ -151,7 +155,7 @@ class ProbeManager
 {
   private:
     /** Required for sensible debug messages.*/
-    const M5_CLASS_VAR_USED SimObject *object;
+    M5_CLASS_VAR_USED const SimObject *object;
     /** Vector for name look-up. */
     std::vector<ProbePoint *> points;
 

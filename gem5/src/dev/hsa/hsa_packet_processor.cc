@@ -70,12 +70,12 @@ HSAPP_EVENT_DESCRIPTION_GENERATOR(CmdQueueCmdDmaEvent)
 HSAPP_EVENT_DESCRIPTION_GENERATOR(QueueProcessEvent)
 HSAPP_EVENT_DESCRIPTION_GENERATOR(DepSignalsReadDmaEvent)
 
-HSAPacketProcessor::HSAPacketProcessor(const Params *p)
-    : DmaDevice(p), numHWQueues(p->numHWQueues), pioAddr(p->pioAddr),
-      pioSize(PAGE_SIZE), pioDelay(10), pktProcessDelay(p->pktProcessDelay)
+HSAPacketProcessor::HSAPacketProcessor(const Params &p)
+    : DmaDevice(p), numHWQueues(p.numHWQueues), pioAddr(p.pioAddr),
+      pioSize(PAGE_SIZE), pioDelay(10), pktProcessDelay(p.pktProcessDelay)
 {
     DPRINTF(HSAPacketProcessor, "%s:\n", __FUNCTION__);
-    hwSchdlr = new HWScheduler(this, p->wakeupDelay);
+    hwSchdlr = new HWScheduler(this, p.wakeupDelay);
     regdQList.resize(numHWQueues);
     for (int i = 0; i < numHWQueues; i++) {
         regdQList[i] = new RQLEntry(this, i);
@@ -126,7 +126,7 @@ HSAPacketProcessor::write(Packet *pkt)
     assert(pkt->getAddr() >= pioAddr && pkt->getAddr() < pioAddr + pioSize);
 
     // TODO: How to get pid??
-    Addr M5_VAR_USED daddr = pkt->getAddr() - pioAddr;
+    M5_VAR_USED Addr daddr = pkt->getAddr() - pioAddr;
 
     DPRINTF(HSAPacketProcessor,
           "%s: write of size %d to reg-offset %d (0x%x)\n",
@@ -256,7 +256,7 @@ void
 HSAPacketProcessor::CmdQueueCmdDmaEvent::process()
 {
     uint32_t rl_idx = series_ctx->rl_idx;
-    AQLRingBuffer *aqlRingBuffer M5_VAR_USED =
+    M5_VAR_USED AQLRingBuffer *aqlRingBuffer =
         hsaPP->regdQList[rl_idx]->qCntxt.aqlBuf;
     HSAQueueDescriptor* qDesc =
         hsaPP->regdQList[rl_idx]->qCntxt.qDesc;
@@ -432,6 +432,14 @@ HSAPacketProcessor::processPkt(void* pkt, uint32_t rl_idx, Addr host_pkt_addr)
         fatal("Unsupported packet type HSA_PACKET_TYPE_BARRIER_OR");
     } else if (pkt_type == HSA_PACKET_TYPE_INVALID) {
         fatal("Unsupported packet type HSA_PACKET_TYPE_INVALID");
+    } else if (pkt_type == HSA_PACKET_TYPE_AGENT_DISPATCH) {
+        DPRINTF(HSAPacketProcessor, "%s: submitting agent dispatch pkt" \
+                " active list ID = %d\n", __FUNCTION__, rl_idx);
+        // Submit packet to HSA device (dispatcher)
+        hsa_device->submitAgentDispatchPkt(
+                (void *)disp_pkt, rl_idx, host_pkt_addr);
+        is_submitted = UNBLOCKED;
+        sendAgentDispatchCompletionSignal((void *)disp_pkt,0);
     } else {
         fatal("Unsupported packet type %d\n", pkt_type);
     }
@@ -590,7 +598,7 @@ HSAPacketProcessor::getCommandsFromHost(int pid, uint32_t rl_idx)
 void
 HSAPacketProcessor::displayQueueDescriptor(int pid, uint32_t rl_idx)
 {
-    HSAQueueDescriptor* M5_VAR_USED qDesc = regdQList[rl_idx]->qCntxt.qDesc;
+    M5_VAR_USED HSAQueueDescriptor* qDesc = regdQList[rl_idx]->qCntxt.qDesc;
     DPRINTF(HSAPacketProcessor,
             "%s: pid[%d], basePointer[0x%lx], dBPointer[0x%lx], "
             "writeIndex[0x%x], readIndex[0x%x], size(bytes)[0x%x]\n",
@@ -657,12 +665,6 @@ AQLRingBuffer::allocEntry(uint32_t nBufReq)
     return nBufReq;
 }
 
-HSAPacketProcessor *
-HSAPacketProcessorParams::create()
-{
-    return new HSAPacketProcessor(this);
-}
-
 void
 HSAPacketProcessor::finishPkt(void *pvPkt, uint32_t rl_idx)
 {
@@ -705,4 +707,57 @@ HSAPacketProcessor::finishPkt(void *pvPkt, uint32_t rl_idx)
                                         // when implementing
                                         // multi-process support
     }
+}
+
+void
+HSAPacketProcessor::sendAgentDispatchCompletionSignal(
+    void *pkt, hsa_signal_value_t signal)
+{
+    auto agent_pkt = (_hsa_agent_dispatch_packet_t *)pkt;
+    uint64_t signal_addr =
+            (uint64_t) (((uint64_t *)agent_pkt->completion_signal) + 1);
+    DPRINTF(HSAPacketProcessor, "Triggering Agent Dispatch packet" \
+            " completion signal: %x!\n", signal_addr);
+    /**
+     * HACK: The semantics of the HSA signal is to
+     * decrement the current signal value.
+     * I'm going to cheat here and read out
+     * the value from main memory using functional
+     * access, and then just DMA the decremented value.
+     * The reason for this is that the DMASequencer does
+     * not support atomic operations.
+     */
+    VPtr<uint64_t> prev_signal(signal_addr, sys->threads[0]);
+
+    DPRINTF(HSAPacketProcessor,"HSADriver: Sending signal to %lu\n",
+            (uint64_t)sys->threads[0]->cpuId());
+
+
+    hsa_signal_value_t *new_signal = new hsa_signal_value_t;
+    *new_signal = (hsa_signal_value_t) *prev_signal - 1;
+
+    dmaWriteVirt(signal_addr, sizeof(hsa_signal_value_t), nullptr, new_signal, 0);
+}
+
+void
+HSAPacketProcessor::sendCompletionSignal(hsa_signal_value_t signal)
+{
+    uint64_t signal_addr = (uint64_t) (((uint64_t *)signal) + 1);
+    DPRINTF(HSAPacketProcessor, "Triggering completion signal: %x!\n",
+            signal_addr);
+    /**
+     * HACK: The semantics of the HSA signal is to
+     * decrement the current signal value.
+     * I'm going to cheat here and read out
+     * the value from main memory using functional
+     * access, and then just DMA the decremented value.
+     * The reason for this is that the DMASequencer does
+     * not support atomic operations.
+     */
+    VPtr<uint64_t> prev_signal(signal_addr, sys->threads[0]);
+
+    hsa_signal_value_t *new_signal = new hsa_signal_value_t;
+    *new_signal = (hsa_signal_value_t) *prev_signal - 1;
+
+    dmaWriteVirt(signal_addr, sizeof(hsa_signal_value_t), nullptr, new_signal, 0);
 }

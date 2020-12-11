@@ -71,16 +71,16 @@ bool RubySystem::m_warmup_enabled = false;
 unsigned RubySystem::m_systems_to_warmup = 0;
 bool RubySystem::m_cooldown_enabled = false;
 
-RubySystem::RubySystem(const Params *p)
-    : ClockedObject(p), m_access_backing_store(p->access_backing_store),
+RubySystem::RubySystem(const Params &p)
+    : ClockedObject(p), m_access_backing_store(p.access_backing_store),
       m_cache_recorder(NULL)
 {
-    m_randomization = p->randomization;
+    m_randomization = p.randomization;
 
-    m_block_size_bytes = p->block_size_bytes;
+    m_block_size_bytes = p.block_size_bytes;
     assert(isPowerOf2(m_block_size_bytes));
     m_block_size_bits = floorLog2(m_block_size_bytes);
-    m_memory_size_bits = p->memory_size_bits;
+    m_memory_size_bits = p.memory_size_bits;
 
     // Resize to the size of different machine types
     m_abstract_controls.resize(MachineType_NUM);
@@ -89,7 +89,7 @@ RubySystem::RubySystem(const Params *p)
     Stats::registerDumpCallback([this]() { collateStats(); });
     // Create the profiler
     m_profiler = new Profiler(p, this);
-    m_phys_mem = p->phys_mem;
+    m_phys_mem = p.phys_mem;
 }
 
 void
@@ -155,7 +155,7 @@ RubySystem::registerRequestorIDs()
     }
 
     // Default all other requestor IDs to network 0
-    for (auto id = 0; id < params()->system->maxRequestors(); ++id) {
+    for (auto id = 0; id < params().system->maxRequestors(); ++id) {
         if (!requestorToNetwork.count(id)) {
             requestorToNetwork.insert(std::make_pair(id, 0));
         }
@@ -602,7 +602,7 @@ RubySystem::functionalWrite(PacketPtr pkt)
 
     DPRINTF(RubySystem, "Functional Write request for %#x\n", addr);
 
-    uint32_t M5_VAR_USED num_functional_writes = 0;
+    M5_VAR_USED uint32_t num_functional_writes = 0;
 
     // Only send functional requests within the same network.
     assert(requestorToNetwork.count(pkt->requestorId()));
@@ -637,10 +637,4 @@ RubySystem::functionalWrite(PacketPtr pkt)
     DPRINTF(RubySystem, "Messages written = %u\n", num_functional_writes);
 
     return true;
-}
-
-RubySystem *
-RubySystemParams::create()
-{
-    return new RubySystem(this);
 }

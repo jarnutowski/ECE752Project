@@ -34,6 +34,7 @@
 
 #include "gpu-compute/dispatcher.hh"
 
+#include "debug/GPUAgentDisp.hh"
 #include "debug/GPUDisp.hh"
 #include "debug/GPUKernelInfo.hh"
 #include "debug/GPUWgLatency.hh"
@@ -44,7 +45,7 @@
 #include "sim/syscall_emul_buf.hh"
 #include "sim/system.hh"
 
-GPUDispatcher::GPUDispatcher(const Params *p)
+GPUDispatcher::GPUDispatcher(const Params &p)
     : SimObject(p), shader(nullptr), gpuCmdProc(nullptr),
       tickEvent([this]{ exec(); },
           "GPU Dispatcher tick", false, Event::CPU_Tick_Pri),
@@ -130,6 +131,8 @@ GPUDispatcher::dispatch(HSAQueueEntry *task)
 
     DPRINTF(GPUDisp, "launching kernel: %s, dispatch ID: %d\n",
             task->kernelName(), task->dispatchId());
+    DPRINTF(GPUAgentDisp, "launching kernel: %s, dispatch ID: %d\n",
+            task->kernelName(), task->dispatchId());
 
     execIds.push(task->dispatchId());
     dispatchActive = true;
@@ -144,6 +147,7 @@ void
 GPUDispatcher::exec()
 {
     int fail_count(0);
+    int disp_count(0);
 
     /**
      * There are potentially multiple outstanding kernel launches.
@@ -151,6 +155,7 @@ GPUDispatcher::exec()
      * can fit on the GPU even if another kernel's workgroups cannot
      */
     DPRINTF(GPUDisp, "Launching %d Kernels\n", execIds.size());
+    DPRINTF(GPUAgentDisp, "Launching %d Kernels\n", execIds.size());
 
     if (execIds.size() > 0) {
         ++cyclesWaitingForDispatch;
@@ -204,7 +209,7 @@ GPUDispatcher::exec()
                 /**
                  * if we failed try the next kernel,
                  * it may have smaller workgroups.
-                 * put it on the queue to rety latter
+                 * put it on the queue to retry later
                  */
                 DPRINTF(GPUDisp, "kernel %d failed to launch\n", exec_id);
                 execIds.push(exec_id);
@@ -212,6 +217,7 @@ GPUDispatcher::exec()
                 break;
             } else if (!launched) {
                 launched = true;
+                disp_count++;
                 DPRINTF(GPUKernelInfo, "Launched kernel %d\n", exec_id);
             }
         }
@@ -221,6 +227,8 @@ GPUDispatcher::exec()
     }
 
     DPRINTF(GPUDisp, "Returning %d Kernels\n", doneIds.size());
+    DPRINTF(GPUWgLatency, "Kernel Wgs dispatched: %d | %d failures\n",
+            disp_count, fail_count);
 
     while (doneIds.size()) {
         DPRINTF(GPUDisp, "Kernel %d completed\n", doneIds.front());
@@ -359,9 +367,4 @@ GPUDispatcher::scheduleDispatch()
     if (!tickEvent.scheduled()) {
         schedule(&tickEvent, curTick() + shader->clockPeriod());
     }
-}
-
-GPUDispatcher *GPUDispatcherParams::create()
-{
-    return new GPUDispatcher(this);
 }

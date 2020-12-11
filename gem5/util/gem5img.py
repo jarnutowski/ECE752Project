@@ -1,4 +1,30 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python3
+#
+# Copyright 2020 Google, Inc.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met: redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer;
+# redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution;
+# neither the name of the copyright holders nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 #
 # gem5img.py
 # Script for managing a gem5 disk image.
@@ -31,7 +57,7 @@ debug = False
 def chsFromSize(sizeInBlocks):
     if sizeInBlocks >= MaxLBABlocks:
         sizeInMBs = (sizeInBlocks * BlockSize) / MB
-        print '%d MB is too big for LBA, truncating file.' % sizeInMBs
+        print('%d MB is too big for LBA, truncating file.' % sizeInMBs)
         return (MaxLBACylinders, MaxLBAHeads, MaxLBASectors)
 
     sectors = sizeInBlocks
@@ -53,12 +79,12 @@ def needSudo():
     if not hasattr(needSudo, 'notRoot'):
         needSudo.notRoot = (os.geteuid() != 0)
         if needSudo.notRoot:
-            print 'You are not root. Using sudo.'
+            print('You are not root. Using sudo.')
     return needSudo.notRoot
 
 # Run an external command.
 def runCommand(command, inputVal=''):
-    print "%>", ' '.join(command)
+    print("%>", ' '.join(command))
     proc = Popen(command, stdin=PIPE)
     proc.communicate(inputVal)
     return proc.returncode
@@ -68,7 +94,7 @@ def runCommand(command, inputVal=''):
 def getOutput(command, inputVal=''):
     global debug
     if debug:
-        print "%>", ' '.join(command)
+        print("%>", ' '.join(command))
     proc = Popen(command, stderr=STDOUT,
                  stdin=PIPE, stdout=PIPE)
     (out, err) = proc.communicate(inputVal)
@@ -106,7 +132,7 @@ class LoopbackDevice(object):
         assert not self.devFile
         (out, returncode) = privOutput([findProg('losetup'), '-f'])
         if returncode != 0:
-            print out
+            print(out)
             return returncode
         self.devFile = string.strip(out)
         command = [findProg('losetup'), self.devFile, fileName]
@@ -131,7 +157,7 @@ def findPartOffset(devFile, fileName, partition):
     command = [findProg('sfdisk'), '-d', dev.devFile]
     (out, returncode) = privOutput(command)
     if returncode != 0:
-        print out
+        print(out)
         exit(returncode)
     lines = out.splitlines()
     # Make sure the first few lines of the output look like what we expect.
@@ -156,7 +182,7 @@ def findPartOffset(devFile, fileName, partition):
 def mountPointToDev(mountPoint):
     (mountTable, returncode) = getOutput([findProg('mount')])
     if returncode != 0:
-        print mountTable
+        print(mountTable)
         exit(returncode)
     mountTable = mountTable.splitlines()
     for line in mountTable:
@@ -223,7 +249,7 @@ mountCom = Command('mount', 'Mount the first partition in the disk image.',
 def mountComFunc(options, args):
     (path, mountPoint) = args
     if not os.path.isdir(mountPoint):
-        print "Mount point %s is not a directory." % mountPoint
+        print("Mount point %s is not a directory." % mountPoint)
 
     dev = LoopbackDevice()
     if dev.setup(path, offset=True) != 0:
@@ -242,12 +268,12 @@ umountCom = Command('umount', 'Unmount the first partition in the disk image.',
 def umountComFunc(options, args):
     (mountPoint,) = args
     if not os.path.isdir(mountPoint):
-        print "Mount point %s is not a directory." % mountPoint
+        print("Mount point %s is not a directory." % mountPoint)
         exit(1)
 
     dev = mountPointToDev(mountPoint)
     if not dev:
-        print "Unable to find mount information for %s." % mountPoint
+        print("Unable to find mount information for %s." % mountPoint)
 
     # Unmount the loopback device.
     if runPriv([findProg('umount'), mountPoint]) != 0:
@@ -362,14 +388,14 @@ initCom.func = initComFunc
 
 # Figure out what command was requested and execute it.
 if len(argv) < 2 or argv[1] not in commands:
-    print 'Usage: %s [command] <command arguments>'
-    print 'where [command] is one of '
+    print('Usage: %s [command] <command arguments>')
+    print('where [command] is one of ')
     for name in commandOrder:
         command = commands[name]
-        print '    %s: %s' % (command.name, command.description)
-    print 'Watch for orphaned loopback devices and delete them with'
-    print 'losetup -d. Mounted images will belong to root, so you may need'
-    print 'to use sudo to modify their contents.'
+        print('    %s: %s' % (command.name, command.description))
+    print('Watch for orphaned loopback devices and delete them with')
+    print('losetup -d. Mounted images will belong to root, so you may need')
+    print('to use sudo to modify their contents.')
     exit(1)
 
 command = commands[argv[1]]

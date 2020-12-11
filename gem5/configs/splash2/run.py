@@ -267,6 +267,8 @@ else:
 for cpu in cpus:
     cpu.workload = root.workload
 
+system.workload = SEWorkload.init_compatible(root.workload.executable)
+
 # ----------------------
 # Run the simulation
 # ----------------------

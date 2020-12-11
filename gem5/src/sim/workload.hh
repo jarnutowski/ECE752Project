@@ -55,7 +55,7 @@ class Workload : public SimObject
     } stats;
 
   public:
-    Workload(const WorkloadParams *_params) : SimObject(_params), stats(this)
+    Workload(const WorkloadParams &_params) : SimObject(_params), stats(this)
     {}
 
     void recordQuiesce() { stats.quiesce++; }
@@ -68,6 +68,18 @@ class Workload : public SimObject
 
     virtual const Loader::SymbolTable &symtab(ThreadContext *tc) = 0;
     virtual bool insertSymbol(const Loader::Symbol &symbol) = 0;
+
+    virtual void
+    syscall(ThreadContext *tc)
+    {
+        panic("syscall() not implemented.");
+    }
+
+    virtual void
+    event(ThreadContext *tc)
+    {
+        warn("Unhandled workload event.");
+    }
 
     /** @{ */
     /**

@@ -56,7 +56,7 @@ class PowerModelState : public SimObject
   public:
 
     typedef PowerModelStateParams Params;
-    PowerModelState(const Params *p);
+    PowerModelState(const Params &p);
 
     /**
      * Get the dynamic power consumption.
@@ -83,30 +83,15 @@ class PowerModelState : public SimObject
         clocked_object = clkobj;
     }
 
-    void regStats() {
-        SimObject::regStats();
-
-        dynamicPower
-          .method(this, &PowerModelState::getDynamicPower)
-          .name(params()->name + ".dynamic_power")
-          .desc("Dynamic power for this object (Watts)")
-        ;
-
-        staticPower
-          .method(this, &PowerModelState::getStaticPower)
-          .name(params()->name + ".static_power")
-          .desc("Static power for this object (Watts)")
-        ;
-    }
-
   protected:
-    Stats::Value dynamicPower, staticPower;
 
     /** Current temperature */
     double _temp;
 
     /** The clocked object we belong to */
     ClockedObject * clocked_object;
+
+    Stats::Value dynamicPower, staticPower;
 };
 
 /**
@@ -120,7 +105,7 @@ class PowerModel : public SimObject
   public:
 
     typedef PowerModelParams Params;
-    PowerModel(const Params *p);
+    PowerModel(const Params &p);
 
     /**
      * Get the dynamic power consumption.
@@ -135,22 +120,6 @@ class PowerModel : public SimObject
      * @return Power (Watts) consumed by this object (static component)
      */
     double getStaticPower() const;
-
-    void regStats() {
-        SimObject::regStats();
-
-        dynamicPower
-          .method(this, &PowerModel::getDynamicPower)
-          .name(params()->name + ".dynamic_power")
-          .desc("Dynamic power for this power state")
-        ;
-
-        staticPower
-          .method(this, &PowerModel::getStaticPower)
-          .name(params()->name + ".static_power")
-          .desc("Static power for this power state")
-        ;
-    }
 
     void setClockedObject(ClockedObject *clkobj);
 
@@ -176,8 +145,6 @@ class PowerModel : public SimObject
         PowerModel &pm;
     };
 
-    Stats::Value dynamicPower, staticPower;
-
     /** Actual power models (one per power state) */
     std::vector<PowerModelState*> states_pm;
 
@@ -192,6 +159,8 @@ class PowerModel : public SimObject
 
     /** The type of power model - collects all power, static or dynamic only */
     Enums::PMType power_model_type;
+
+    Stats::Value dynamicPower, staticPower;
 };
 
 #endif

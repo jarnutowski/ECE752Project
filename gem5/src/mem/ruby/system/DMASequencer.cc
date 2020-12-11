@@ -45,9 +45,9 @@ DMARequest::DMARequest(uint64_t start_paddr, int len, bool write,
 {
 }
 
-DMASequencer::DMASequencer(const Params *p)
+DMASequencer::DMASequencer(const Params &p)
     : RubyPort(p), m_outstanding_count(0),
-      m_max_outstanding_requests(p->max_outstanding_requests)
+      m_max_outstanding_requests(p.max_outstanding_requests)
 {
 }
 
@@ -56,9 +56,6 @@ DMASequencer::init()
 {
     RubyPort::init();
     m_data_block_mask = mask(RubySystem::getBlockSizeBits());
-
-    for (const auto &response_port : response_ports)
-        response_port->sendRangeChange();
 }
 
 RequestStatus
@@ -201,10 +198,4 @@ DMASequencer::recordRequestType(DMASequencerRequestType requestType)
 {
     DPRINTF(RubyStats, "Recorded statistic: %s\n",
             DMASequencerRequestType_to_string(requestType));
-}
-
-DMASequencer *
-DMASequencerParams::create()
-{
-    return new DMASequencer(this);
 }

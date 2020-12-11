@@ -55,12 +55,16 @@ using namespace std;
 //
 // Raw Disk image
 //
-RawDiskImage::RawDiskImage(const Params* p)
+RawDiskImage::RawDiskImage(const Params &p)
     : DiskImage(p), disk_size(0)
-{ open(p->image_file, p->read_only); }
+{
+    open(p.image_file, p.read_only);
+}
 
 RawDiskImage::~RawDiskImage()
-{ close(); }
+{
+    close();
+}
 
 void
 RawDiskImage::notifyFork()
@@ -68,9 +72,9 @@ RawDiskImage::notifyFork()
     if (initialized && !readonly)
         panic("Attempting to fork system with read-write raw disk image.");
 
-    const Params *p(dynamic_cast<const Params *>(params()));
+    const Params &p = dynamic_cast<const Params &>(params());
     close();
-    open(p->image_file, p->read_only);
+    open(p.image_file, p.read_only);
 }
 
 void
@@ -155,12 +159,6 @@ RawDiskImage::write(const uint8_t *data, std::streampos offset)
     return stream.tellp() - pos;
 }
 
-RawDiskImage *
-RawDiskImageParams::create()
-{
-    return new RawDiskImage(this);
-}
-
 ////////////////////////////////////////////////////////////////////////
 //
 // Copy on Write Disk image
@@ -168,19 +166,19 @@ RawDiskImageParams::create()
 const uint32_t CowDiskImage::VersionMajor = 1;
 const uint32_t CowDiskImage::VersionMinor = 0;
 
-CowDiskImage::CowDiskImage(const Params *p)
-    : DiskImage(p), filename(p->image_file), child(p->child), table(NULL)
+CowDiskImage::CowDiskImage(const Params &p)
+    : DiskImage(p), filename(p.image_file), child(p.child), table(NULL)
 {
     if (filename.empty()) {
-        initSectorTable(p->table_size);
+        initSectorTable(p.table_size);
     } else {
         if (!open(filename)) {
-            if (p->read_only)
+            if (p.read_only)
                 fatal("could not open read-only file");
-            initSectorTable(p->table_size);
+            initSectorTable(p.table_size);
         }
 
-        if (!p->read_only)
+        if (!p.read_only)
             registerExitCallback([this]() { save(); });
     }
 }
@@ -199,7 +197,7 @@ CowDiskImage::~CowDiskImage()
 void
 CowDiskImage::notifyFork()
 {
-    if (!dynamic_cast<const Params *>(params())->read_only &&
+    if (!dynamic_cast<const Params &>(params()).read_only &&
         !filename.empty()) {
         inform("Disabling saving of COW image in forked child process.\n");
         filename = "";
@@ -436,10 +434,4 @@ CowDiskImage::unserialize(CheckpointIn &cp)
     UNSERIALIZE_SCALAR(cowFilename);
     cowFilename = cp.getCptDir() + "/" + cowFilename;
     open(cowFilename);
-}
-
-CowDiskImage *
-CowDiskImageParams::create()
-{
-    return new CowDiskImage(this);
 }

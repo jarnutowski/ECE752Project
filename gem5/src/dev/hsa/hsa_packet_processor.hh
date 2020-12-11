@@ -309,7 +309,7 @@ class HSAPacketProcessor: public DmaDevice
     const Tick pktProcessDelay;
 
     typedef HSAPacketProcessorParams Params;
-    HSAPacketProcessor(const Params *p);
+    HSAPacketProcessor(const Params &p);
     ~HSAPacketProcessor();
     void setDeviceQueueDesc(uint64_t hostReadIndexPointer,
                             uint64_t basePointer,
@@ -328,6 +328,10 @@ class HSAPacketProcessor: public DmaDevice
     void finishPkt(void *pkt) { finishPkt(pkt, 0); }
     void schedAQLProcessing(uint32_t rl_idx);
     void schedAQLProcessing(uint32_t rl_idx, Tick delay);
+
+    void sendAgentDispatchCompletionSignal(void *pkt,
+                                           hsa_signal_value_t signal);
+    void sendCompletionSignal(hsa_signal_value_t signal);
 
     class DepSignalsReadDmaEvent : public Event
     {

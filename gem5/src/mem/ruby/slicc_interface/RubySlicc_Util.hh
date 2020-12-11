@@ -55,8 +55,11 @@
 #include "mem/ruby/common/DataBlock.hh"
 #include "mem/ruby/common/TypeDefines.hh"
 #include "mem/ruby/common/WriteMask.hh"
+#include "mem/ruby/protocol/RubyRequestType.hh"
 
 inline Cycles zero_time() { return Cycles(0); }
+
+inline Cycles intToCycles(int c) { return Cycles(c); }
 
 inline NodeID
 intToID(int nodenum)
@@ -164,6 +167,16 @@ htmCmdToRubyRequestType(const Packet *pkt)
     else {
         panic("invalid ruby packet type\n");
     }
+}
+
+inline int
+addressOffset(Addr addr, Addr base)
+{
+    assert(addr >= base);
+    Addr offset = addr - base;
+    // sanity checks if fits in an int
+    assert(offset < INT_MAX);
+    return offset;
 }
 
 /**

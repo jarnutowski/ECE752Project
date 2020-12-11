@@ -48,7 +48,15 @@
 // undefined declaration error.
 //
 
-external_type(MessageBuffer, buffer="yes", inport="yes", outport="yes");
+structure(MessageBuffer, buffer="yes", inport="yes", outport="yes",
+                         external = "yes", primitive="yes") {
+  // NOTE: it's recommended to use SLICC's built in resource stall management.
+  // These functions are mostly for including resource utilization info
+  // in debug traces dumped by the protocol.
+  bool areNSlotsAvailable(int n, Tick curTime);
+  int getSize(Tick curTime);
+}
+
 external_type(Scalar, primitive="yes");
 
 structure(OutPort, external = "yes", primitive="yes") {
@@ -111,6 +119,7 @@ structure (NetDest, external = "yes", non_obj="yes") {
   bool isEmpty();
   bool intersectionIsEmpty(Set);
   bool intersectionIsEmpty(NetDest);
+  MachineID smallestElement();
   MachineID smallestElement(MachineType);
   NetDest OR(NetDest);
   NetDest AND(NetDest);
@@ -128,6 +137,7 @@ structure (Sequencer, external = "yes") {
   void writeCallback(Addr, DataBlock, bool, MachineType);
   void writeCallback(Addr, DataBlock, bool, MachineType,
                      Cycles, Cycles, Cycles);
+  void writeUniqueCallback(Addr, DataBlock);
 
   // ll/sc support
   void writeCallbackScFail(Addr, DataBlock);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 ARM Limited
+ * Copyright (c) 2019,2020 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -69,7 +69,7 @@ class MessageBuffer : public SimObject
 {
   public:
     typedef MessageBufferParams Params;
-    MessageBuffer(const Params *p);
+    MessageBuffer(const Params &p);
 
     void reanalyzeMessages(Addr addr, Tick current_time);
     void reanalyzeAllMessages(Tick current_time);
@@ -248,7 +248,8 @@ class MessageBuffer : public SimObject
     uint64_t m_msg_counter;
     int m_priority_rank;
     const bool m_strict_fifo;
-    const bool m_randomization;
+    const MessageRandomization m_randomization;
+    const bool m_allow_zero_latency;
 
     int m_input_link_id;
     int m_vnet_id;

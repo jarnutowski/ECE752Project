@@ -90,7 +90,8 @@ Process::Loader::Loader()
 }
 
 Process *
-Process::tryLoaders(ProcessParams *params, ::Loader::ObjectFile *obj_file)
+Process::tryLoaders(const ProcessParams &params,
+                    ::Loader::ObjectFile *obj_file)
 {
     for (auto &loader: process_loaders()) {
         Process *p = loader->load(params, obj_file);
@@ -102,31 +103,31 @@ Process::tryLoaders(ProcessParams *params, ::Loader::ObjectFile *obj_file)
 }
 
 static std::string
-normalize(std::string& directory)
+normalize(const std::string& directory)
 {
     if (directory.back() != '/')
-        directory += '/';
+        return directory + '/';
     return directory;
 }
 
-Process::Process(ProcessParams *params, EmulationPageTable *pTable,
+Process::Process(const ProcessParams &params, EmulationPageTable *pTable,
                  ::Loader::ObjectFile *obj_file)
-    : SimObject(params), system(params->system),
-      useArchPT(params->useArchPT),
-      kvmInSE(params->kvmInSE),
+    : SimObject(params), system(params.system),
+      useArchPT(params.useArchPT),
+      kvmInSE(params.kvmInSE),
       useForClone(false),
       pTable(pTable),
       objFile(obj_file),
-      argv(params->cmd), envp(params->env),
-      executable(params->executable),
-      tgtCwd(normalize(params->cwd)),
+      argv(params.cmd), envp(params.env),
+      executable(params.executable == "" ? params.cmd[0] : params.executable),
+      tgtCwd(normalize(params.cwd)),
       hostCwd(checkPathRedirect(tgtCwd)),
-      release(params->release),
-      _uid(params->uid), _euid(params->euid),
-      _gid(params->gid), _egid(params->egid),
-      _pid(params->pid), _ppid(params->ppid),
-      _pgid(params->pgid), drivers(params->drivers),
-      fds(make_shared<FDArray>(params->input, params->output, params->errout)),
+      release(params.release),
+      _uid(params.uid), _euid(params.euid),
+      _gid(params.gid), _egid(params.egid),
+      _pid(params.pid), _ppid(params.ppid),
+      _pgid(params.pgid), drivers(params.drivers),
+      fds(make_shared<FDArray>(params.input, params.output, params.errout)),
       childClearTID(0)
 {
     if (_pid >= System::maxPID)
@@ -148,7 +149,7 @@ Process::Process(ProcessParams *params, EmulationPageTable *pTable,
      * with a new, equivalent value. If CLONE_THREAD is specified, patch
      * the tgid value with the old process' value.
      */
-    _tgid = params->pid;
+    _tgid = params.pid;
 
     exitGroup = new bool();
     sigchld = new bool();
@@ -318,7 +319,7 @@ Process::drain()
 void
 Process::allocateMem(Addr vaddr, int64_t size, bool clobber)
 {
-    int npages = divCeil(size, (int64_t)system->getPageBytes());
+    int npages = divCeil(size, pTable->pageSize());
     Addr paddr = system->allocPhysPages(npages);
     pTable->map(vaddr, paddr, size,
                 clobber ? EmulationPageTable::Clobber :
@@ -333,15 +334,14 @@ Process::replicatePage(Addr vaddr, Addr new_paddr, ThreadContext *old_tc,
         new_paddr = system->allocPhysPages(1);
 
     // Read from old physical page.
-    uint8_t *buf_p = new uint8_t[system->getPageBytes()];
-    old_tc->getVirtProxy().readBlob(vaddr, buf_p, system->getPageBytes());
+    uint8_t buf_p[pTable->pageSize()];
+    old_tc->getVirtProxy().readBlob(vaddr, buf_p, sizeof(buf_p));
 
     // Create new mapping in process address space by clobbering existing
     // mapping (if any existed) and then write to the new physical page.
     bool clobber = true;
-    pTable->map(vaddr, new_paddr, system->getPageBytes(), clobber);
-    new_tc->getVirtProxy().writeBlob(vaddr, buf_p, system->getPageBytes());
-    delete[] buf_p;
+    pTable->map(vaddr, new_paddr, sizeof(buf_p), clobber);
+    new_tc->getVirtProxy().writeBlob(vaddr, buf_p, sizeof(buf_p));
 }
 
 bool
@@ -442,7 +442,7 @@ Process::updateBias()
 
     // Determine how large the interpreters footprint will be in the process
     // address space.
-    Addr interp_mapsize = roundUp(interp->mapSize(), system->getPageBytes());
+    Addr interp_mapsize = roundUp(interp->mapSize(), pTable->pageSize());
 
     // We are allocating the memory area; set the bias to the lowest address
     // in the allocated memory region.
@@ -508,18 +508,16 @@ Process::absolutePath(const std::string &filename, bool host_filesystem)
 }
 
 Process *
-ProcessParams::create()
+ProcessParams::create() const
 {
     // If not specified, set the executable parameter equal to the
     // simulated system's zeroth command line parameter
-    if (executable == "") {
-        executable = cmd[0];
-    }
+    const std::string &exec = (executable == "") ? cmd[0] : executable;
 
-    auto *obj_file = Loader::createObjectFile(executable);
-    fatal_if(!obj_file, "Cannot load object file %s.", executable);
+    auto *obj_file = Loader::createObjectFile(exec);
+    fatal_if(!obj_file, "Cannot load object file %s.", exec);
 
-    Process *process = Process::tryLoaders(this, obj_file);
+    Process *process = Process::tryLoaders(*this, obj_file);
     fatal_if(!process, "Unknown error creating process object.");
 
     return process;

@@ -105,7 +105,6 @@ class CPCntrl(CorePair_Controller, CntrlBase):
 
         self.sequencer = RubySequencer()
         self.sequencer.version = self.seqCount()
-        self.sequencer.icache = self.L1Icache
         self.sequencer.dcache = self.L1D0cache
         self.sequencer.ruby_system = ruby_system
         self.sequencer.coreid = 0
@@ -113,7 +112,6 @@ class CPCntrl(CorePair_Controller, CntrlBase):
 
         self.sequencer1 = RubySequencer()
         self.sequencer1.version = self.seqCount()
-        self.sequencer1.icache = self.L1Icache
         self.sequencer1.dcache = self.L1D1cache
         self.sequencer1.ruby_system = ruby_system
         self.sequencer1.coreid = 1
@@ -166,7 +164,6 @@ class TCPCntrl(TCP_Controller, CntrlBase):
 
         self.sequencer = RubySequencer()
         self.sequencer.version = self.seqCount()
-        self.sequencer.icache = self.L1cache
         self.sequencer.dcache = self.L1cache
         self.sequencer.ruby_system = ruby_system
         self.sequencer.is_cpu_sequencer = True
@@ -197,7 +194,6 @@ class TCPCntrl(TCP_Controller, CntrlBase):
 
         self.sequencer = RubySequencer()
         self.sequencer.version = self.seqCount()
-        self.sequencer.icache = self.L1cache
         self.sequencer.dcache = self.L1cache
         self.sequencer.ruby_system = ruby_system
         self.sequencer.is_cpu_sequencer = True
@@ -232,7 +228,6 @@ class SQCCntrl(SQC_Controller, CntrlBase):
         self.sequencer = RubySequencer()
 
         self.sequencer.version = self.seqCount()
-        self.sequencer.icache = self.L1cache
         self.sequencer.dcache = self.L1cache
         self.sequencer.ruby_system = ruby_system
         self.sequencer.support_data_reqs = False
@@ -661,7 +656,7 @@ def create_system(options, full_system, system, dma_devices, bootmem,
         # SQC also in GPU cluster
         gpuCluster.add(sqc_cntrl)
 
-    for i in xrange(options.num_scalar_cache):
+    for i in range(options.num_scalar_cache):
         scalar_cntrl = SQCCntrl(TCC_select_num_bits = TCC_bits)
         scalar_cntrl.create(options, ruby_system, system)
 
@@ -683,7 +678,7 @@ def create_system(options, full_system, system, dma_devices, bootmem,
 
         gpuCluster.add(scalar_cntrl)
 
-    for i in xrange(options.num_cp):
+    for i in range(options.num_cp):
 
         tcp_ID = options.num_compute_units + i
         sqc_ID = options.num_sqc + i

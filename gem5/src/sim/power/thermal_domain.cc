@@ -48,10 +48,13 @@
 #include "sim/probe/probe.hh"
 #include "sim/sub_system.hh"
 
-ThermalDomain::ThermalDomain(const Params *p)
-    : SimObject(p), _initTemperature(p->initial_temperature),
-    node(NULL), subsystem(NULL)
+ThermalDomain::ThermalDomain(const Params &p)
+    : SimObject(p), _initTemperature(p.initial_temperature),
+    node(NULL), subsystem(NULL),
+    ADD_STAT(currentTemp, "Temperature in centigrade degrees")
 {
+    currentTemp
+        .method(this, &ThermalDomain::currentTemperature);
 }
 
 double
@@ -71,27 +74,9 @@ ThermalDomain::setSubSystem(SubSystem * ss)
 }
 
 void
-ThermalDomain::regStats()
-{
-    SimObject::regStats();
-
-    currentTemp
-        .method(this, &ThermalDomain::currentTemperature)
-        .name(params()->name + ".temp")
-        .desc("Temperature in centigrate degrees")
-        ;
-}
-
-void
 ThermalDomain::emitUpdate()
 {
     ppThermalUpdate->notify(node->temp);
-}
-
-ThermalDomain *
-ThermalDomainParams::create()
-{
-    return new ThermalDomain(this);
 }
 
 void

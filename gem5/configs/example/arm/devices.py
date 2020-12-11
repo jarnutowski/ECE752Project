@@ -179,7 +179,8 @@ class CpuCluster(SubSystem):
             int_cls = ArmPPI if pint < 32 else ArmSPI
             for isa in cpu.isa:
                 isa.pmu = ArmPMU(interrupt=int_cls(num=pint))
-                isa.pmu.addArchEvents(cpu=cpu, itb=cpu.itb, dtb=cpu.dtb,
+                isa.pmu.addArchEvents(cpu=cpu,
+                                      itb=cpu.mmu.itb, dtb=cpu.mmu.dtb,
                                       icache=getattr(cpu, 'icache', None),
                                       dcache=getattr(cpu, 'dcache', None),
                                       l2cache=getattr(self, 'l2', None))
@@ -187,7 +188,6 @@ class CpuCluster(SubSystem):
                     isa.pmu.addEvent(ev)
 
     def connectMemSide(self, bus):
-        bus.slave
         try:
             self.l2.mem_side = bus.slave
         except AttributeError:
@@ -258,6 +258,8 @@ class FastmodelCluster(SubSystem):
             core.semihosting_enable = False
             core.RVBARADDR = 0x10
             core.redistributor = gic.redistributor
+            core.createThreads()
+            core.createInterruptController()
         self.cpus = [ cpu ]
 
         a2t = AmbaToTlmBridge64(amba=cpu.amba)

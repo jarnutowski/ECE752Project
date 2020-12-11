@@ -36,10 +36,10 @@
 namespace RiscvISA
 {
 
-BareMetal::BareMetal(Params *p) : RiscvISA::FsWorkload(p),
-      bootloader(Loader::createObjectFile(p->bootloader))
+BareMetal::BareMetal(const Params &p) : RiscvISA::FsWorkload(p),
+      bootloader(Loader::createObjectFile(p.bootloader))
 {
-    fatal_if(!bootloader, "Could not load bootloader file %s.", p->bootloader);
+    fatal_if(!bootloader, "Could not load bootloader file %s.", p.bootloader);
     _resetVect = bootloader->entryPoint();
     bootloaderSymtab = bootloader->symtab();
 }
@@ -69,9 +69,3 @@ BareMetal::initState()
 }
 
 } // namespace RiscvISA
-
-RiscvISA::BareMetal *
-RiscvBareMetalParams::create()
-{
-    return new RiscvISA::BareMetal(this);
-}

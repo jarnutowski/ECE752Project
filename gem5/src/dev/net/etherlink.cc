@@ -63,13 +63,13 @@
 
 using namespace std;
 
-EtherLink::EtherLink(const Params *p)
+EtherLink::EtherLink(const Params &p)
     : SimObject(p)
 {
-    link[0] = new Link(name() + ".link0", this, 0, p->speed,
-                       p->delay, p->delay_var, p->dump);
-    link[1] = new Link(name() + ".link1", this, 1, p->speed,
-                       p->delay, p->delay_var, p->dump);
+    link[0] = new Link(name() + ".link0", this, 0, p.speed,
+                       p.delay, p.delay_var, p.dump);
+    link[1] = new Link(name() + ".link1", this, 1, p.speed,
+                       p.delay, p.delay_var, p.dump);
 
     interface[0] = new Interface(name() + ".int0", link[0], link[1]);
     interface[1] = new Interface(name() + ".int1", link[1], link[0]);
@@ -263,10 +263,4 @@ EtherLink::Link::unserialize(const string &base, CheckpointIn &cp)
         warn("Old-style EtherLink serialization format detected, "
              "in-flight packets may have been dropped.\n");
     }
-}
-
-EtherLink *
-EtherLinkParams::create()
-{
-    return new EtherLink(this);
 }

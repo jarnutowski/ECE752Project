@@ -41,6 +41,7 @@ from __future__ import print_function
 
 import array
 import bisect
+import distutils.spawn
 import functools
 import imp
 import os
@@ -65,7 +66,7 @@ Export('env')
 
 build_env = [(opt, env[opt]) for opt in export_vars]
 
-from m5.util import code_formatter, compareVersions
+from m5.util import code_formatter, compareVersions, readCommand
 
 ########################################################################
 # Code for adding source files of various types
@@ -386,6 +387,34 @@ class SimObject(PySource):
 
         bisect.insort_right(SimObject.modnames, self.modname)
 
+
+# This regular expression is simplistic and assumes that the import takes up
+# the entire line, doesn't have the keyword "public", uses double quotes, has
+# no whitespace at the end before or after the ;, and is all on one line. This
+# should still cover most cases, and a completely accurate scanner would be
+# MUCH more complex.
+protoc_import_re = re.compile(r'^import\s+\"(.*\.proto)\"\;$', re.M)
+
+def protoc_scanner(node, env, path):
+    deps = []
+    for imp in protoc_import_re.findall(node.get_text_contents()):
+        deps.append(Dir(env['BUILDDIR']).File(imp))
+    return deps
+
+env.Append(SCANNERS=Scanner(function=protoc_scanner, skeys=['.proto']))
+
+def protoc_emitter(target, source, env):
+    root, ext = os.path.splitext(source[0].get_abspath())
+    return [root + '.pb.cc', root + '.pb.h'], source
+
+env.Append(BUILDERS={'ProtoBufCC' : Builder(
+            action=MakeAction('${PROTOC} --cpp_out ${BUILDDIR} '
+                              '--proto_path ${BUILDDIR} '
+                              '${SOURCE.get_abspath()}',
+                              Transform("PROTOC")),
+            emitter=protoc_emitter
+        )})
+
 class ProtoBuf(SourceFile):
     '''Add a Protocol Buffer to build'''
 
@@ -393,14 +422,57 @@ class ProtoBuf(SourceFile):
         '''Specify the source file, and any tags'''
         super(ProtoBuf, self).__init__(source, tags, add_tags)
 
+        if not env['HAVE_PROTOC'] or not env['HAVE_PROTOBUF']:
+            error('Got protobuf to build, but lacks support!')
+
         # Get the file name and the extension
         modname,ext = self.extname
         assert ext == 'proto'
 
-        # Currently, we stick to generating the C++ headers, so we
-        # only need to track the source and header.
-        self.cc_file = File(modname + '.pb.cc')
-        self.hh_file = File(modname + '.pb.h')
+        self.cc_file, self.hh_file = env.ProtoBufCC(source=source)
+
+        # Add the C++ source file
+        Source(self.cc_file, tags=self.tags,
+                append={'CXXFLAGS': '-Wno-array-bounds'})
+
+
+
+env['PROTOC_GRPC'] = distutils.spawn.find_executable('grpc_cpp_plugin')
+if env['PROTOC_GRPC']:
+    env.Append(LIBS=['grpc++'])
+
+def protoc_grpc_emitter(target, source, env):
+    root, ext = os.path.splitext(source[0].get_abspath())
+    return [root + '.grpc.pb.cc', root + '.grpc.pb.h'], source
+
+env.Append(BUILDERS={'GrpcProtoBufCC' : Builder(
+            action=MakeAction('${PROTOC} --grpc_out ${BUILDDIR} '
+                              '--plugin=protoc-gen-grpc=${PROTOC_GRPC} '
+                              '--proto_path ${BUILDDIR} '
+                              '${SOURCE.get_abspath()}',
+                              Transform("PROTOC")),
+            emitter=protoc_grpc_emitter
+        )})
+
+class GrpcProtoBuf(SourceFile):
+    '''Add a GRPC protocol buffer to the build'''
+
+    def __init__(self, source, tags=None, add_tags=None):
+        '''Specify the source file, and any tags'''
+
+        super(GrpcProtoBuf, self).__init__(source, tags, add_tags)
+
+        if not env['PROTOC_GRPC']:
+            error('No grpc_cpp_plugin found')
+
+        self.cc_file, self.hh_file = env.GrpcProtoBufCC(source=source)
+
+        # We still need to build the normal protobuf code too.
+        self.protobuf = ProtoBuf(source, tags=self.tags)
+
+        # Add the C++ source file.
+        Source(self.cc_file, tags=self.tags,
+                append={'CXXFLAGS': '-Wno-array-bounds'})
 
 
 exectuable_classes = []
@@ -541,6 +613,7 @@ Export('Source')
 Export('PySource')
 Export('SimObject')
 Export('ProtoBuf')
+Export('GrpcProtoBuf')
 Export('Executable')
 Export('UnitTest')
 Export('GTest')
@@ -751,7 +824,7 @@ class DictImporter(object):
             return mod
 
         if fullname == 'm5.defines':
-            mod.__dict__['buildEnv'] = m5.util.SmartDict(build_env)
+            mod.__dict__['buildEnv'] = dict(build_env)
             return mod
 
         source = self.modules[fullname]
@@ -821,7 +894,7 @@ def makeDefinesPyFile(target, source, env):
 import _m5.core
 import m5.util
 
-buildEnv = m5.util.SmartDict($build_env)
+buildEnv = dict($build_env)
 
 compileDate = _m5.core.compileDate
 gem5Version = _m5.core.gem5Version
@@ -1015,24 +1088,6 @@ if env['USE_PYTHON']:
                                Transform("SO PyBind")))
         env.Depends(cc_file, depends + extra_deps)
         Source(cc_file)
-
-# Build all protocol buffers if we have got protoc and protobuf available
-if env['HAVE_PROTOC'] and env['HAVE_PROTOBUF']:
-    for proto in ProtoBuf.all:
-        # Use both the source and header as the target, and the .proto
-        # file as the source. When executing the protoc compiler, also
-        # specify the proto_path to avoid having the generated files
-        # include the path.
-        env.Command([proto.cc_file, proto.hh_file], proto.tnode,
-                    MakeAction('${PROTOC} --cpp_out ${TARGET.dir} '
-                               '--proto_path ${SOURCE.dir} $SOURCE',
-                               Transform("PROTOC")))
-
-        # Add the C++ source file
-        Source(proto.cc_file, tags=proto.tags,
-                append={'CXXFLAGS': '-Wno-array-bounds'})
-elif ProtoBuf.all:
-    error('Got protobuf to build, but lacks support!')
 
 #
 # Handle debug flags

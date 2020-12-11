@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011,2013,2017-2018 ARM Limited
+ * Copyright (c) 2011,2013,2017-2018, 2020 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -61,7 +61,7 @@ CheckerCPU::init()
     requestorId = systemPtr->getRequestorId(this);
 }
 
-CheckerCPU::CheckerCPU(Params *p)
+CheckerCPU::CheckerCPU(const Params &p)
     : BaseCPU(p, true), systemPtr(NULL), icachePort(NULL), dcachePort(NULL),
       tc(NULL), thread(NULL),
       unverifiedReq(nullptr),
@@ -78,11 +78,10 @@ CheckerCPU::CheckerCPU(Params *p)
 
     changedPC = willChangePC = false;
 
-    exitOnError = p->exitOnError;
-    warnOnlyOnLoadError = p->warnOnlyOnLoadError;
-    itb = p->itb;
-    dtb = p->dtb;
-    workload = p->workload;
+    exitOnError = p.exitOnError;
+    warnOnlyOnLoadError = p.warnOnlyOnLoadError;
+    mmu = p.mmu;
+    workload = p.workload;
 
     updateOnError = true;
 }
@@ -94,16 +93,16 @@ CheckerCPU::~CheckerCPU()
 void
 CheckerCPU::setSystem(System *system)
 {
-    const Params *p(dynamic_cast<const Params *>(_params));
+    const Params &p = dynamic_cast<const Params &>(_params);
 
     systemPtr = system;
 
     if (FullSystem) {
-        thread = new SimpleThread(this, 0, systemPtr, itb, dtb, p->isa[0]);
+        thread = new SimpleThread(this, 0, systemPtr, mmu, p.isa[0]);
     } else {
         thread = new SimpleThread(this, 0, systemPtr,
                                   workload.size() ? workload[0] : NULL,
-                                  itb, dtb, p->isa[0]);
+                                  mmu, p.isa[0]);
     }
 
     tc = thread->getTC();
@@ -147,21 +146,15 @@ CheckerCPU::genMemFragmentRequest(Addr frag_addr, int size,
 
     RequestPtr mem_req;
 
-    if (!byte_enable.empty()) {
-        // Set up byte-enable mask for the current fragment
-        auto it_start = byte_enable.cbegin() + (size - (frag_size +
-                                                        size_left));
-        auto it_end = byte_enable.cbegin() + (size - size_left);
-        if (isAnyActiveElement(it_start, it_end)) {
-            mem_req = std::make_shared<Request>(frag_addr, frag_size,
-                    flags, requestorId, thread->pcState().instAddr(),
-                    tc->contextId());
-            mem_req->setByteEnable(std::vector<bool>(it_start, it_end));
-        }
-    } else {
+    // Set up byte-enable mask for the current fragment
+    auto it_start = byte_enable.cbegin() + (size - (frag_size +
+                                                    size_left));
+    auto it_end = byte_enable.cbegin() + (size - size_left);
+    if (isAnyActiveElement(it_start, it_end)) {
         mem_req = std::make_shared<Request>(frag_addr, frag_size,
-                    flags, requestorId, thread->pcState().instAddr(),
-                    tc->contextId());
+                flags, requestorId, thread->pcState().instAddr(),
+                tc->contextId());
+        mem_req->setByteEnable(std::vector<bool>(it_start, it_end));
     }
 
     return mem_req;
@@ -172,7 +165,7 @@ CheckerCPU::readMem(Addr addr, uint8_t *data, unsigned size,
                     Request::Flags flags,
                     const std::vector<bool>& byte_enable)
 {
-    assert(byte_enable.empty() || byte_enable.size() == size);
+    assert(byte_enable.size() == size);
 
     Fault fault = NoFault;
     bool checked_flags = false;
@@ -194,7 +187,7 @@ CheckerCPU::readMem(Addr addr, uint8_t *data, unsigned size,
 
         // translate to physical address
         if (predicate) {
-            fault = dtb->translateFunctional(mem_req, tc, BaseTLB::Read);
+            fault = mmu->translateFunctional(mem_req, tc, BaseTLB::Read);
         }
 
         if (predicate && !checked_flags && fault == NoFault && unverifiedReq) {
@@ -256,7 +249,7 @@ CheckerCPU::writeMem(uint8_t *data, unsigned size,
                      Addr addr, Request::Flags flags, uint64_t *res,
                      const std::vector<bool>& byte_enable)
 {
-    assert(byte_enable.empty() || byte_enable.size() == size);
+    assert(byte_enable.size() == size);
 
     Fault fault = NoFault;
     bool checked_flags = false;
@@ -278,7 +271,7 @@ CheckerCPU::writeMem(uint8_t *data, unsigned size,
         predicate = (mem_req != nullptr);
 
         if (predicate) {
-            fault = dtb->translateFunctional(mem_req, tc, BaseTLB::Write);
+            fault = mmu->translateFunctional(mem_req, tc, BaseTLB::Write);
         }
 
         if (predicate && !checked_flags && fault == NoFault && unverifiedReq) {

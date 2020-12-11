@@ -236,23 +236,15 @@ shader = Shader(n_wf = options.wfs_per_simd,
                     voltage_domain = VoltageDomain(
                         voltage = options.gpu_voltage)))
 
-# GPU_RfO(Read For Ownership) implements SC/TSO memory model.
-# Other GPU protocols implement release consistency at GPU side.
-# So, all GPU protocols other than GPU_RfO should make their writes
-# visible to the global memory and should read from global memory
-# during kernal boundary. The pipeline initiates(or do not initiate)
-# the acquire/release operation depending on these impl_kern_launch_rel
-# and impl_kern_end_rel flags.  The flag=true means pipeline initiates
-# a acquire/release operation at kernel launch/end.
-# VIPER protocols (GPU_VIPER, GPU_VIPER_Region and GPU_VIPER_Baseline)
-# are write-through based, and thus only imple_kern_launch_acq needs to
-# set.
-if buildEnv['PROTOCOL'] == 'GPU_RfO':
-    shader.impl_kern_launch_acq = False
-    shader.impl_kern_end_rel = False
-elif (buildEnv['PROTOCOL'] != 'GPU_VIPER' or
-        buildEnv['PROTOCOL'] != 'GPU_VIPER_Region' or
-        buildEnv['PROTOCOL'] != 'GPU_VIPER_Baseline'):
+# VIPER GPU protocol implements release consistency at GPU side. So,
+# we make their writes visible to the global memory and should read
+# from global memory during kernal boundary. The pipeline initiates
+# (or do not initiate) the acquire/release operation depending on
+# these impl_kern_launch_rel and impl_kern_end_rel flags. The flag=true
+# means pipeline initiates a acquire/release operation at kernel launch/end.
+# VIPER protocol is write-through based, and thus only impl_kern_launch_acq
+# needs to set.
+if (buildEnv['PROTOCOL'] == 'GPU_VIPER'):
     shader.impl_kern_launch_acq = True
     shader.impl_kern_end_rel = False
 else:
@@ -299,8 +291,8 @@ for i in range(n_cu):
     vrf_pool_mgrs = []
     srfs = []
     srf_pool_mgrs = []
-    for j in xrange(options.simds_per_cu):
-        for k in xrange(shader.n_wf):
+    for j in range(options.simds_per_cu):
+        for k in range(shader.n_wf):
             wavefronts.append(Wavefront(simdId = j, wf_slot_id = k,
                                         wf_size = options.wf_size))
         vrf_pool_mgrs.append(SimplePoolManager(pool_size = \
@@ -500,7 +492,8 @@ cpu_list = cpu_list + [shader] + cp_list
 system = System(cpu = cpu_list,
                 mem_ranges = [AddrRange(options.mem_size)],
                 cache_line_size = options.cacheline_size,
-                mem_mode = mem_mode)
+                mem_mode = mem_mode,
+                workload = SEWorkload.init_compatible(executable))
 if fast_forward:
     system.future_cpu = future_cpu_list
 system.voltage_domain = VoltageDomain(voltage = options.sys_voltage)
@@ -550,8 +543,8 @@ for i in range(options.num_cpus):
         system.cpu[i].interrupts[0].int_master = system.piobus.slave
         system.cpu[i].interrupts[0].int_slave = system.piobus.master
         if fast_forward:
-            system.cpu[i].itb.walker.port = ruby_port.slave
-            system.cpu[i].dtb.walker.port = ruby_port.slave
+            system.cpu[i].mmu.connectWalkerPorts(
+                ruby_port.slave, ruby_port.slave)
 
 # attach CU ports to Ruby
 # Because of the peculiarities of the CP core, you may have 1 CPU but 2
@@ -565,6 +558,16 @@ gpu_port_idx = len(system.ruby._cpu_ports) \
                - options.num_scalar_cache
 gpu_port_idx = gpu_port_idx - options.num_cp * 2
 
+# Connect token ports. For this we need to search through the list of all
+# sequencers, since the TCP coalescers will not necessarily be first. Only
+# TCP coalescers use a token port for back pressure.
+token_port_idx = 0
+for i in range(len(system.ruby._cpu_ports)):
+    if isinstance(system.ruby._cpu_ports[i], VIPERCoalescer):
+        system.cpu[shader_idx].CUs[token_port_idx].gmTokenPort = \
+            system.ruby._cpu_ports[i].gmTokenPort
+        token_port_idx += 1
+
 wavefront_size = options.wf_size
 for i in range(n_cu):
     # The pipeline issues wavefront_size number of uncoalesced requests
@@ -572,8 +575,6 @@ for i in range(n_cu):
     for j in range(wavefront_size):
         system.cpu[shader_idx].CUs[i].memory_port[j] = \
                   system.ruby._cpu_ports[gpu_port_idx].slave[j]
-    system.cpu[shader_idx].CUs[i].gmTokenPort = \
-            system.ruby._cpu_ports[gpu_port_idx].gmTokenPort
     gpu_port_idx += 1
 
 for i in range(n_cu):
@@ -584,7 +585,7 @@ for i in range(n_cu):
             system.ruby._cpu_ports[gpu_port_idx].slave
 gpu_port_idx = gpu_port_idx + 1
 
-for i in xrange(n_cu):
+for i in range(n_cu):
     if i > 0 and not i % options.cu_per_scalar_cache:
         print("incrementing idx on ", i)
         gpu_port_idx += 1

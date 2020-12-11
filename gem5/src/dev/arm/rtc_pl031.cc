@@ -46,12 +46,14 @@
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 
-PL031::PL031(Params *p)
-    : AmbaIntDevice(p, 0x1000), timeVal(mkutctime(&p->time)),
-      lastWrittenTick(0), loadVal(0), matchVal(0),
+PL031::PL031(const Params &p)
+    : AmbaIntDevice(p, 0x1000), lastWrittenTick(0), loadVal(0), matchVal(0),
       rawInt(false), maskInt(false), pendingInt(false),
       matchEvent([this]{ counterMatch(); }, name())
 {
+    // Make a temporary copy so mkutctime can modify it.
+    struct tm local_time = p.time;
+    timeVal = mkutctime(&local_time);
 }
 
 
@@ -234,12 +236,4 @@ PL031::unserialize(CheckpointIn &cp)
         UNSERIALIZE_SCALAR(event_time);
         schedule(matchEvent, event_time);
     }
-}
-
-
-
-PL031 *
-PL031Params::create()
-{
-    return new PL031(this);
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 ARM Limited
+ * Copyright (c) 2019,2020 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -52,12 +52,13 @@
 using namespace std;
 using m5::stl_helpers::operator<<;
 
-MessageBuffer::MessageBuffer(const Params *p)
+MessageBuffer::MessageBuffer(const Params &p)
     : SimObject(p), m_stall_map_size(0),
-    m_max_size(p->buffer_size), m_time_last_time_size_checked(0),
+    m_max_size(p.buffer_size), m_time_last_time_size_checked(0),
     m_time_last_time_enqueue(0), m_time_last_time_pop(0),
-    m_last_arrival_time(0), m_strict_fifo(p->ordered),
-    m_randomization(p->randomization)
+    m_last_arrival_time(0), m_strict_fifo(p.ordered),
+    m_randomization(p.randomization),
+    m_allow_zero_latency(p.allow_zero_latency)
 {
     m_msg_counter = 0;
     m_consumer = NULL;
@@ -172,12 +173,15 @@ MessageBuffer::enqueue(MsgPtr message, Tick current_time, Tick delta)
 
     // Calculate the arrival time of the message, that is, the first
     // cycle the message can be dequeued.
-    assert(delta > 0);
+    panic_if((delta == 0) && !m_allow_zero_latency,
+           "Delta equals zero and allow_zero_latency is false during enqueue");
     Tick arrival_time = 0;
 
-    // random delays are inserted if either RubySystem level randomization flag
-    // is turned on, or the buffer level randomization is set
-    if (!RubySystem::getRandomization() && !m_randomization) {
+    // random delays are inserted if the RubySystem level randomization flag
+    // is turned on and this buffer allows it
+    if ((m_randomization == MessageRandomization::disabled) ||
+        ((m_randomization == MessageRandomization::ruby_system) &&
+          !RubySystem::getRandomization())) {
         // No randomization
         arrival_time = current_time + delta;
     } else {
@@ -193,7 +197,7 @@ MessageBuffer::enqueue(MsgPtr message, Tick current_time, Tick delta)
     }
 
     // Check the arrival time
-    assert(arrival_time > current_time);
+    assert(arrival_time >= current_time);
     if (m_strict_fifo) {
         if (arrival_time < m_last_arrival_time) {
             panic("FIFO ordering violated: %s name: %s current time: %d "
@@ -224,6 +228,9 @@ MessageBuffer::enqueue(MsgPtr message, Tick current_time, Tick delta)
     push_heap(m_prio_heap.begin(), m_prio_heap.end(), greater<MsgPtr>());
     // Increment the number of messages statistic
     m_buf_msgs++;
+
+    assert((m_max_size == 0) ||
+           ((m_prio_heap.size() + m_stall_map_size) <= m_max_size));
 
     DPRINTF(RubyQueue, "Enqueue arrival_time: %lld, Message: %s\n",
             arrival_time, *(message.get()));
@@ -521,10 +528,4 @@ MessageBuffer::functionalAccess(Packet *pkt, bool is_read)
     }
 
     return num_functional_accesses;
-}
-
-MessageBuffer *
-MessageBufferParams::create()
-{
-    return new MessageBuffer(this);
 }

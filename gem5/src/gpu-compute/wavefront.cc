@@ -33,6 +33,7 @@
 
 #include "gpu-compute/wavefront.hh"
 
+#include "base/bitfield.hh"
 #include "debug/GPUExec.hh"
 #include "debug/GPUInitAbi.hh"
 #include "debug/WavefrontStack.hh"
@@ -43,15 +44,9 @@
 #include "gpu-compute/simple_pool_manager.hh"
 #include "gpu-compute/vector_register_file.hh"
 
-Wavefront*
-WavefrontParams::create()
-{
-    return new Wavefront(this);
-}
-
-Wavefront::Wavefront(const Params *p)
-  : SimObject(p), wfSlotId(p->wf_slot_id), simdId(p->simdId),
-    maxIbSize(p->max_ib_size), _gpuISA(*this),
+Wavefront::Wavefront(const Params &p)
+  : SimObject(p), wfSlotId(p.wf_slot_id), simdId(p.simdId),
+    maxIbSize(p.max_ib_size), _gpuISA(*this),
     vmWaitCnt(-1), expWaitCnt(-1), lgkmWaitCnt(-1),
     vmemInstsIssued(0), expInstsIssued(0), lgkmInstsIssued(0),
     barId(WFBarrier::InvalidID)
@@ -82,18 +77,18 @@ Wavefront::Wavefront(const Params *p)
     memTraceBusy = 0;
     oldVgprTcnt = 0xffffffffffffffffll;
     oldDgprTcnt = 0xffffffffffffffffll;
-    oldVgpr.resize(p->wf_size);
+    oldVgpr.resize(p.wf_size);
 
     pendingFetch = false;
     dropFetch = false;
     maxVgprs = 0;
     maxSgprs = 0;
 
-    lastAddr.resize(p->wf_size);
-    workItemFlatId.resize(p->wf_size);
-    oldDgpr.resize(p->wf_size);
+    lastAddr.resize(p.wf_size);
+    workItemFlatId.resize(p.wf_size);
+    oldDgpr.resize(p.wf_size);
     for (int i = 0; i < 3; ++i) {
-        workItemId[i].resize(p->wf_size);
+        workItemId[i].resize(p.wf_size);
     }
 
     _execMask.set();
@@ -257,23 +252,23 @@ Wavefront::initRegState(HSAQueueEntry *task, int wgSizeInWorkItems)
                 physSgprIdx =
                     computeUnit->registerManager->mapSgpr(this, regInitIdx);
                 computeUnit->srf[simdId]->write(physSgprIdx,
-                        ((uint32_t*)&host_disp_pkt_addr)[0]);
+                        bits(host_disp_pkt_addr, 31, 0));
                 ++regInitIdx;
                 DPRINTF(GPUInitAbi, "CU%d: WF[%d][%d]: wave[%d] "
                         "Setting DispatchPtr: s[%d] = %x\n",
                         computeUnit->cu_id, simdId,
                         wfSlotId, wfDynId, physSgprIdx,
-                        ((uint32_t*)&host_disp_pkt_addr)[0]);
+                        bits(host_disp_pkt_addr, 31, 0));
 
                 physSgprIdx =
                     computeUnit->registerManager->mapSgpr(this, regInitIdx);
                 computeUnit->srf[simdId]->write(physSgprIdx,
-                        ((uint32_t*)&host_disp_pkt_addr)[1]);
+                        bits(host_disp_pkt_addr, 63, 32));
                 DPRINTF(GPUInitAbi, "CU%d: WF[%d][%d]: wave[%d] "
                         "Setting DispatchPtr: s[%d] = %x\n",
                         computeUnit->cu_id, simdId,
                         wfSlotId, wfDynId, physSgprIdx,
-                        ((uint32_t*)&host_disp_pkt_addr)[1]);
+                        bits(host_disp_pkt_addr, 63, 32));
 
                 ++regInitIdx;
                 break;
@@ -281,23 +276,23 @@ Wavefront::initRegState(HSAQueueEntry *task, int wgSizeInWorkItems)
                 physSgprIdx =
                     computeUnit->registerManager->mapSgpr(this, regInitIdx);
                 computeUnit->srf[simdId]->write(physSgprIdx,
-                        ((uint32_t*)&task->hostAMDQueueAddr)[0]);
+                        bits(task->hostAMDQueueAddr, 31, 0));
                 ++regInitIdx;
                 DPRINTF(GPUInitAbi, "CU%d: WF[%d][%d]: wave[%d] "
                         "Setting QueuePtr: s[%d] = %x\n",
                         computeUnit->cu_id, simdId,
                         wfSlotId, wfDynId, physSgprIdx,
-                       ((uint32_t*)&task->hostAMDQueueAddr)[0]);
+                        bits(task->hostAMDQueueAddr, 31, 0));
 
                 physSgprIdx =
                     computeUnit->registerManager->mapSgpr(this, regInitIdx);
                 computeUnit->srf[simdId]->write(physSgprIdx,
-                        ((uint32_t*)&task->hostAMDQueueAddr)[1]);
+                        bits(task->hostAMDQueueAddr, 63, 32));
                 DPRINTF(GPUInitAbi, "CU%d: WF[%d][%d]: wave[%d] "
                         "Setting QueuePtr: s[%d] = %x\n",
                         computeUnit->cu_id, simdId,
                         wfSlotId, wfDynId, physSgprIdx,
-                       ((uint32_t*)&task->hostAMDQueueAddr)[1]);
+                        bits(task->hostAMDQueueAddr, 63, 32));
 
                 ++regInitIdx;
                 break;
@@ -305,23 +300,23 @@ Wavefront::initRegState(HSAQueueEntry *task, int wgSizeInWorkItems)
                 physSgprIdx =
                     computeUnit->registerManager->mapSgpr(this, regInitIdx);
                 computeUnit->srf[simdId]->write(physSgprIdx,
-                        ((uint32_t*)&kernarg_addr)[0]);
+                        bits(kernarg_addr, 31, 0));
                 ++regInitIdx;
                 DPRINTF(GPUInitAbi, "CU%d: WF[%d][%d]: wave[%d] "
                         "Setting KernargSegPtr: s[%d] = %x\n",
                         computeUnit->cu_id, simdId,
                         wfSlotId, wfDynId, physSgprIdx,
-                       ((uint32_t*)kernarg_addr)[0]);
+                        bits(kernarg_addr, 31, 0));
 
                 physSgprIdx =
                     computeUnit->registerManager->mapSgpr(this, regInitIdx);
                 computeUnit->srf[simdId]->write(physSgprIdx,
-                        ((uint32_t*)&kernarg_addr)[1]);
+                        bits(kernarg_addr, 63, 32));
                 DPRINTF(GPUInitAbi, "CU%d: WF[%d][%d]: wave[%d] "
                         "Setting KernargSegPtr: s[%d] = %x\n",
                         computeUnit->cu_id, simdId,
                         wfSlotId, wfDynId, physSgprIdx,
-                       ((uint32_t*)kernarg_addr)[1]);
+                        bits(kernarg_addr, 63, 32));
 
                 ++regInitIdx;
                 break;

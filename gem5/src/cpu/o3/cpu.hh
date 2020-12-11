@@ -79,9 +79,7 @@ class BaseO3CPU : public BaseCPU
 {
     //Stuff that's pretty ISA independent will go here.
   public:
-    BaseO3CPU(BaseCPUParams *params);
-
-    void regStats();
+    BaseO3CPU(const BaseCPUParams &params);
 };
 
 /**
@@ -119,8 +117,7 @@ class FullO3CPU : public BaseO3CPU
         SwitchedOut
     };
 
-    BaseTLB *itb;
-    BaseTLB *dtb;
+    BaseMMU *mmu;
     using LSQRequest = typename LSQ<Impl>::LSQRequest;
 
     /** Overall CPU status. */
@@ -179,12 +176,9 @@ class FullO3CPU : public BaseO3CPU
 
   public:
     /** Constructs a CPU with the given parameters. */
-    FullO3CPU(DerivO3CPUParams *params);
+    FullO3CPU(const DerivO3CPUParams &params);
     /** Destructor. */
     ~FullO3CPU();
-
-    /** Registers statistics. */
-    void regStats() override;
 
     ProbePointArg<PacketPtr> *ppInstAccessComplete;
     ProbePointArg<std::pair<DynInstPtr, PacketPtr> > *ppDataAccessComplete;
@@ -192,20 +186,10 @@ class FullO3CPU : public BaseO3CPU
     /** Register probe points. */
     void regProbePoints() override;
 
-    void demapPage(Addr vaddr, uint64_t asn)
+    void
+    demapPage(Addr vaddr, uint64_t asn)
     {
-        this->itb->demapPage(vaddr, asn);
-        this->dtb->demapPage(vaddr, asn);
-    }
-
-    void demapInstPage(Addr vaddr, uint64_t asn)
-    {
-        this->itb->demapPage(vaddr, asn);
-    }
-
-    void demapDataPage(Addr vaddr, uint64_t asn)
-    {
-        this->dtb->demapPage(vaddr, asn);
+        mmu->demapPage(vaddr, asn);
     }
 
     /** Ticks CPU, calling tick() on each stage, and checking the overall
@@ -276,11 +260,6 @@ class FullO3CPU : public BaseO3CPU
     void exitThreads();
 
   public:
-    /** Executes a syscall.
-     * @todo: Determine if this needs to be virtual.
-     */
-    void syscall(ThreadID tid);
-
     /** Starts draining the CPU's pipeline of all instructions in
      * order to stop all memory accesses. */
     DrainState drain() override;
@@ -378,7 +357,7 @@ class FullO3CPU : public BaseO3CPU
     VecLaneT<VecElem, true>
     readVecLane(PhysRegIdPtr phys_reg) const
     {
-        vecRegfileReads++;
+        cpuStats.vecRegfileReads++;
         return regFile.readVecLane<VecElem, LaneIdx>(phys_reg);
     }
 
@@ -389,7 +368,7 @@ class FullO3CPU : public BaseO3CPU
     VecLaneT<VecElem, true>
     readVecLane(PhysRegIdPtr phys_reg) const
     {
-        vecRegfileReads++;
+        cpuStats.vecRegfileReads++;
         return regFile.readVecLane<VecElem>(phys_reg);
     }
 
@@ -398,7 +377,7 @@ class FullO3CPU : public BaseO3CPU
     void
     setVecLane(PhysRegIdPtr phys_reg, const LD& val)
     {
-        vecRegfileWrites++;
+        cpuStats.vecRegfileWrites++;
         return regFile.setVecLane(phys_reg, val);
     }
 
@@ -749,44 +728,50 @@ class FullO3CPU : public BaseO3CPU
         return this->iew.ldstQueue.getDataPort();
     }
 
-    /** Stat for total number of times the CPU is descheduled. */
-    Stats::Scalar timesIdled;
-    /** Stat for total number of cycles the CPU spends descheduled. */
-    Stats::Scalar idleCycles;
-    /** Stat for total number of cycles the CPU spends descheduled due to a
-     * quiesce operation or waiting for an interrupt. */
-    Stats::Scalar quiesceCycles;
-    /** Stat for the number of committed instructions per thread. */
-    Stats::Vector committedInsts;
-    /** Stat for the number of committed ops (including micro ops) per thread. */
-    Stats::Vector committedOps;
-    /** Stat for the CPI per thread. */
-    Stats::Formula cpi;
-    /** Stat for the total CPI. */
-    Stats::Formula totalCpi;
-    /** Stat for the IPC per thread. */
-    Stats::Formula ipc;
-    /** Stat for the total IPC. */
-    Stats::Formula totalIpc;
+    struct FullO3CPUStats : public Stats::Group
+    {
+        FullO3CPUStats(FullO3CPU *cpu);
 
-    //number of integer register file accesses
-    Stats::Scalar intRegfileReads;
-    Stats::Scalar intRegfileWrites;
-    //number of float register file accesses
-    Stats::Scalar fpRegfileReads;
-    Stats::Scalar fpRegfileWrites;
-    //number of vector register file accesses
-    mutable Stats::Scalar vecRegfileReads;
-    Stats::Scalar vecRegfileWrites;
-    //number of predicate register file accesses
-    mutable Stats::Scalar vecPredRegfileReads;
-    Stats::Scalar vecPredRegfileWrites;
-    //number of CC register file accesses
-    Stats::Scalar ccRegfileReads;
-    Stats::Scalar ccRegfileWrites;
-    //number of misc
-    Stats::Scalar miscRegfileReads;
-    Stats::Scalar miscRegfileWrites;
+        /** Stat for total number of times the CPU is descheduled. */
+        Stats::Scalar timesIdled;
+        /** Stat for total number of cycles the CPU spends descheduled. */
+        Stats::Scalar idleCycles;
+        /** Stat for total number of cycles the CPU spends descheduled due to a
+         * quiesce operation or waiting for an interrupt. */
+        Stats::Scalar quiesceCycles;
+        /** Stat for the number of committed instructions per thread. */
+        Stats::Vector committedInsts;
+        /** Stat for the number of committed ops (including micro ops) per
+         *  thread. */
+        Stats::Vector committedOps;
+        /** Stat for the CPI per thread. */
+        Stats::Formula cpi;
+        /** Stat for the total CPI. */
+        Stats::Formula totalCpi;
+        /** Stat for the IPC per thread. */
+        Stats::Formula ipc;
+        /** Stat for the total IPC. */
+        Stats::Formula totalIpc;
+
+        //number of integer register file accesses
+        Stats::Scalar intRegfileReads;
+        Stats::Scalar intRegfileWrites;
+        //number of float register file accesses
+        Stats::Scalar fpRegfileReads;
+        Stats::Scalar fpRegfileWrites;
+        //number of vector register file accesses
+        mutable Stats::Scalar vecRegfileReads;
+        Stats::Scalar vecRegfileWrites;
+        //number of predicate register file accesses
+        mutable Stats::Scalar vecPredRegfileReads;
+        Stats::Scalar vecPredRegfileWrites;
+        //number of CC register file accesses
+        Stats::Scalar ccRegfileReads;
+        Stats::Scalar ccRegfileWrites;
+        //number of misc
+        Stats::Scalar miscRegfileReads;
+        Stats::Scalar miscRegfileWrites;
+    } cpuStats;
 
   public:
     // hardware transactional memory

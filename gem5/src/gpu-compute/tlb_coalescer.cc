@@ -40,11 +40,11 @@
 #include "debug/GPUTLB.hh"
 #include "sim/process.hh"
 
-TLBCoalescer::TLBCoalescer(const Params *p)
+TLBCoalescer::TLBCoalescer(const Params &p)
     : ClockedObject(p),
-      TLBProbesPerCycle(p->probesPerCycle),
-      coalescingWindow(p->coalescingWindow),
-      disableCoalescing(p->disableCoalescing),
+      TLBProbesPerCycle(p.probesPerCycle),
+      coalescingWindow(p.coalescingWindow),
+      disableCoalescing(p.disableCoalescing),
       probeTLBEvent([this]{ processProbeTLBEvent(); },
                     "Probe the TLB below",
                     false, Event::CPU_Tick_Pri),
@@ -53,13 +53,13 @@ TLBCoalescer::TLBCoalescer(const Params *p)
                    false, Event::Maximum_Pri)
 {
     // create the response ports based on the number of connected ports
-    for (size_t i = 0; i < p->port_cpu_side_ports_connection_count; ++i) {
+    for (size_t i = 0; i < p.port_cpu_side_ports_connection_count; ++i) {
         cpuSidePort.push_back(new CpuSidePort(csprintf("%s-port%d", name(), i),
                                               this, i));
     }
 
     // create the request ports based on the number of connected ports
-    for (size_t i = 0; i < p->port_mem_side_ports_connection_count; ++i) {
+    for (size_t i = 0; i < p.port_mem_side_ports_connection_count; ++i) {
         memSidePort.push_back(new MemSidePort(csprintf("%s-port%d", name(), i),
                                               this, i));
     }
@@ -106,10 +106,10 @@ TLBCoalescer::canCoalesce(PacketPtr incoming_pkt, PacketPtr coalesced_pkt)
     // Rule 1: Coalesce requests only if they
     // fall within the same virtual page
     Addr incoming_virt_page_addr = roundDown(incoming_pkt->req->getVaddr(),
-                                             TheISA::PageBytes);
+                                             X86ISA::PageBytes);
 
     Addr coalesced_virt_page_addr = roundDown(coalesced_pkt->req->getVaddr(),
-                                              TheISA::PageBytes);
+                                              X86ISA::PageBytes);
 
     if (incoming_virt_page_addr != coalesced_virt_page_addr)
         return false;
@@ -139,7 +139,7 @@ TLBCoalescer::canCoalesce(PacketPtr incoming_pkt, PacketPtr coalesced_pkt)
 void
 TLBCoalescer::updatePhysAddresses(PacketPtr pkt)
 {
-    Addr virt_page_addr = roundDown(pkt->req->getVaddr(), TheISA::PageBytes);
+    Addr virt_page_addr = roundDown(pkt->req->getVaddr(), X86ISA::PageBytes);
 
     DPRINTF(GPUTLB, "Update phys. addr. for %d coalesced reqs for page %#x\n",
             issuedTranslationsTable[virt_page_addr].size(), virt_page_addr);
@@ -345,7 +345,7 @@ TLBCoalescer::CpuSidePort::recvFunctional(PacketPtr pkt)
     // print a warning message. This is a temporary caveat of
     // the current simulator where atomic and timing requests can
     // coexist. FIXME remove this check/warning in the future.
-    Addr virt_page_addr = roundDown(pkt->req->getVaddr(), TheISA::PageBytes);
+    Addr virt_page_addr = roundDown(pkt->req->getVaddr(), X86ISA::PageBytes);
     int map_count = coalescer->issuedTranslationsTable.count(virt_page_addr);
 
     if (map_count) {
@@ -430,7 +430,7 @@ TLBCoalescer::processProbeTLBEvent()
 
             // compute virtual page address for this request
             Addr virt_page_addr = roundDown(first_packet->req->getVaddr(),
-                    TheISA::PageBytes);
+                    X86ISA::PageBytes);
 
             // is there another outstanding request for the same page addr?
             int pending_reqs =
@@ -552,11 +552,3 @@ TLBCoalescer::regStats()
 
     localLatency = localqueuingCycles / uncoalescedAccesses;
 }
-
-
-TLBCoalescer*
-TLBCoalescerParams::create()
-{
-    return new TLBCoalescer(this);
-}
-

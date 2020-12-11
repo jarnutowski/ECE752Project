@@ -206,7 +206,10 @@ def template NeonLoadExecute {{
         if (%(predicate_test)s)
         {
             if (fault == NoFault) {
-                fault = xc->readMem(EA, dataPtr, %(size)d, memAccessFlags);
+                const auto size = %(size)d;
+                fault = readMemAtomic(xc, EA, dataPtr,
+                                      size, memAccessFlags,
+                                      std::vector<bool>(size, true));
                 %(memacc_code)s;
             }
 
@@ -277,8 +280,10 @@ def template NeonStoreExecute {{
             }
 
             if (fault == NoFault) {
-                fault = xc->writeMem(dataPtr, %(size)d, EA,
-                                     memAccessFlags, NULL);
+                const auto size = %(size)d;
+                fault = writeMemAtomic(xc, dataPtr, EA, size,
+                                       memAccessFlags, NULL,
+                                       std::vector<bool>(size, true));
             }
 
             if (fault == NoFault) {
@@ -410,8 +415,10 @@ def template NeonStoreInitiateAcc {{
             }
 
             if (fault == NoFault) {
-                fault = xc->writeMem(memUnion.bytes, %(size)d, EA,
-                                     memAccessFlags, NULL);
+                const auto size = %(size)d;
+                fault = writeMemTiming(xc, memUnion.bytes, EA,
+                                       size, memAccessFlags, nullptr,
+                                       std::vector<bool>(size, true));
             }
         } else {
             xc->setPredicate(false);
@@ -462,7 +469,9 @@ def template NeonLoadInitiateAcc {{
         if (%(predicate_test)s)
         {
             if (fault == NoFault) {
-                fault = xc->initiateMemRead(EA, %(size)d, memAccessFlags);
+                const auto size = %(size)d;
+                fault = initiateMemRead(xc, EA, size, memAccessFlags,
+                                        std::vector<bool>(size, true));
             }
         } else {
             xc->setPredicate(false);
@@ -843,7 +852,7 @@ def template RfeConstructor {{
         %(constructor)s;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
 #if %(use_uops)d
@@ -873,7 +882,7 @@ def template SrsConstructor {{
         %(constructor)s;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
 #if %(use_uops)d
@@ -897,7 +906,7 @@ def template SwapConstructor {{
         %(constructor)s;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
     }
@@ -914,7 +923,7 @@ def template LoadStoreDImmConstructor {{
         %(constructor)s;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
 #if %(use_uops)d
@@ -941,7 +950,7 @@ def template StoreExDImmConstructor {{
         %(constructor)s;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
 #if %(use_uops)d
@@ -966,7 +975,7 @@ def template LoadStoreImmConstructor {{
         %(constructor)s;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
 #if %(use_uops)d
@@ -992,7 +1001,7 @@ def template StoreExImmConstructor {{
         %(constructor)s;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
 #if %(use_uops)d
@@ -1021,7 +1030,7 @@ def template StoreDRegConstructor {{
         %(constructor)s;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
 #if %(use_uops)d
@@ -1049,7 +1058,7 @@ def template StoreRegConstructor {{
         %(constructor)s;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
 #if %(use_uops)d
@@ -1078,7 +1087,7 @@ def template LoadDRegConstructor {{
         %(constructor)s;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
 #if %(use_uops)d
@@ -1117,11 +1126,11 @@ def template LoadRegConstructor {{
                  (IntRegIndex)_index)
     {
         %(constructor)s;
-        bool conditional M5_VAR_USED = false;
+        M5_VAR_USED bool conditional = false;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             conditional = true;
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
 #if %(use_uops)d
@@ -1183,11 +1192,11 @@ def template LoadImmConstructor {{
                  (IntRegIndex)_dest, (IntRegIndex)_base, _add, _imm)
     {
         %(constructor)s;
-        bool conditional M5_VAR_USED = false;
+        M5_VAR_USED bool conditional = false;
         if (!(condCode == COND_AL || condCode == COND_UC)) {
             conditional = true;
             for (int x = 0; x < _numDestRegs; x++) {
-                _srcRegIdx[_numSrcRegs++] = _destRegIdx[x];
+                setSrcRegIdx(_numSrcRegs++, destRegIdx(x));
             }
         }
 #if %(use_uops)d

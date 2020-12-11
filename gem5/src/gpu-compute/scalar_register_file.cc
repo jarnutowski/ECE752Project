@@ -44,7 +44,7 @@
 #include "gpu-compute/wavefront.hh"
 #include "params/ScalarRegisterFile.hh"
 
-ScalarRegisterFile::ScalarRegisterFile(const ScalarRegisterFileParams *p)
+ScalarRegisterFile::ScalarRegisterFile(const ScalarRegisterFileParams &p)
     : RegisterFile(p)
 {
     regFile.resize(numRegs(), 0);
@@ -155,10 +155,4 @@ ScalarRegisterFile::scheduleWriteOperandsFromLoad(Wavefront *w,
             registerWrites += nRegs;
         }
     }
-}
-
-ScalarRegisterFile*
-ScalarRegisterFileParams::create()
-{
-    return new ScalarRegisterFile(this);
 }

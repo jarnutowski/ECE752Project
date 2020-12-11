@@ -30,9 +30,9 @@
 
 #include <algorithm>
 
-#include "arch/sparc/isa_traits.hh"
+#include "arch/sparc/mmu.hh"
 #include "arch/sparc/process.hh"
-#include "arch/sparc/tlb.hh"
+#include "arch/sparc/se_workload.hh"
 #include "arch/sparc/types.hh"
 #include "base/bitfield.hh"
 #include "base/trace.hh"
@@ -669,8 +669,9 @@ FastInstructionAccessMMUMiss::invoke(ThreadContext *tc,
     // false for syscall emulation mode regardless of whether the
     // address is real in preceding code. Not sure sure that this is
     // correct, but also not sure if it matters at all.
-    dynamic_cast<TLB *>(tc->getITBPtr())->
-        insert(alignedvaddr, partition_id, context_id, false, entry.pte);
+    static_cast<MMU *>(tc->getMMUPtr())->insertItlbEntry(
+        alignedvaddr, partition_id, context_id,
+        false, entry.pte);
 }
 
 void
@@ -756,8 +757,9 @@ FastDataAccessMMUMiss::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     // false for syscall emulation mode regardless of whether the
     // address is real in preceding code. Not sure sure that this is
     // correct, but also not sure if it matters at all.
-    dynamic_cast<TLB *>(tc->getDTBPtr())->
-        insert(alignedvaddr, partition_id, context_id, false, entry.pte);
+    static_cast<MMU *>(tc->getMMUPtr())->insertDtlbEntry(
+        alignedvaddr, partition_id, context_id,
+        false, entry.pte);
 }
 
 void
@@ -812,10 +814,11 @@ TrapInstruction::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 
     Process *p = tc->getProcessPtr();
 
-    SparcProcess *sp = dynamic_cast<SparcProcess *>(p);
+    M5_VAR_USED SparcProcess *sp = dynamic_cast<SparcProcess *>(p);
     assert(sp);
 
-    sp->handleTrap(_n, tc);
+    auto *workload = dynamic_cast<SEWorkload *>(tc->getSystemPtr()->workload);
+    workload->handleTrap(tc, _n);
 
     // We need to explicitly advance the pc, since that's not done for us
     // on a faulting instruction

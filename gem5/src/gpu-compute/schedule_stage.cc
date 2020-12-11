@@ -43,7 +43,7 @@
 #include "gpu-compute/vector_register_file.hh"
 #include "gpu-compute/wavefront.hh"
 
-ScheduleStage::ScheduleStage(const ComputeUnitParams *p, ComputeUnit &cu,
+ScheduleStage::ScheduleStage(const ComputeUnitParams &p, ComputeUnit &cu,
                              ScoreboardCheckToSchedule &from_scoreboard_check,
                              ScheduleToExecute &to_execute)
     : computeUnit(cu), fromScoreboardCheck(from_scoreboard_check),
@@ -143,6 +143,9 @@ ScheduleStage::exec()
                 if (gpu_dyn_inst->isFlat()) {
                     wf->incLGKMInstsIssued();
                 }
+            }
+            if (gpu_dyn_inst->isStore() && gpu_dyn_inst->isGlobalSeg()) {
+                wf->incExpInstsIssued();
             }
         }
     }
@@ -749,7 +752,7 @@ ScheduleStage::reserveResources()
                 // that we've reserved a global and local memory unit. Thus,
                 // we need to mark the latter execution unit as not available.
                 if (execUnitIds.size() > 1) {
-                    int lm_exec_unit M5_VAR_USED = wf->localMem;
+                    M5_VAR_USED int lm_exec_unit = wf->localMem;
                     assert(toExecute.dispatchStatus(lm_exec_unit)
                            == SKIP);
                 }
@@ -758,7 +761,7 @@ ScheduleStage::reserveResources()
                 // Verify the GM pipe for this wave is ready to execute
                 // and the wave in the GM pipe is the same as the wave
                 // in the LM pipe
-                int gm_exec_unit M5_VAR_USED = wf->globalMem;
+                M5_VAR_USED int gm_exec_unit = wf->globalMem;
                 assert(wf->wfDynId == toExecute
                        .readyInst(gm_exec_unit)->wfDynId);
                 assert(toExecute.dispatchStatus(gm_exec_unit)

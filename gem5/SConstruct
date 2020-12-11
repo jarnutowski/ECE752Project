@@ -238,7 +238,7 @@ global_vars.AddVariables(
     ('MARSHAL_CCFLAGS_EXTRA', 'Extra C and C++ marshal compiler flags', ''),
     ('MARSHAL_LDFLAGS_EXTRA', 'Extra marshal linker flags', ''),
     ('PYTHON_CONFIG', 'Python config binary to use',
-     [ 'python3-config', 'python-config', 'python2.7-config', 'python2-config']
+     [ 'python3-config', 'python-config']
     ),
     ('PROTOC', 'protoc tool', environ.get('PROTOC', 'protoc')),
     ('BATCH', 'Use batch pool for build and tests', False),
@@ -318,8 +318,8 @@ if main['GCC'] or main['CLANG']:
     # we consistently violate
     main.Append(CCFLAGS=['-Wall', '-Wundef', '-Wextra',
                          '-Wno-sign-compare', '-Wno-unused-parameter'])
-    # We always compile using C++11
-    main.Append(CXXFLAGS=['-std=c++11'])
+    # We always compile using C++14
+    main.Append(CXXFLAGS=['-std=c++14'])
     if sys.platform.startswith('freebsd'):
         main.Append(CCFLAGS=['-I/usr/local/include'])
         main.Append(CXXFLAGS=['-I/usr/local/include'])
@@ -337,6 +337,12 @@ if main['GCC'] or main['CLANG']:
     main.Append(PSHLINKFLAGS=shared_partial_flags)
     main.Append(PLINKFLAGS=shared_partial_flags)
 
+    # Treat warnings as errors but white list some warnings that we
+    # want to allow (e.g., deprecation warnings).
+    main.Append(CCFLAGS=['-Werror',
+                         '-Wno-error=deprecated-declarations',
+                         '-Wno-error=deprecated',
+                        ])
 else:
     error('\n'.join((
           "Don't know what compiler options to use for your compiler.",
@@ -412,8 +418,8 @@ elif main['CLANG']:
     clang_version_match = clang_version_re.search(CXX_version)
     if (clang_version_match):
         clang_version = clang_version_match.groups()[0]
-        if compareVersions(clang_version, "3.1") < 0:
-            error('clang version 3.1 or newer required.\n'
+        if compareVersions(clang_version, "3.9") < 0:
+            error('clang version 3.9 or newer required.\n'
                   'Installed version:', clang_version)
     else:
         error('Unable to determine clang version.')
@@ -569,6 +575,27 @@ int main(){
     context.Result(ret)
     return ret
 
+def CheckPythonLib(context):
+    context.Message('Checking Python version... ')
+    ret = context.TryRun(r"""
+#include <pybind11/embed.h>
+
+int
+main(int argc, char **argv) {
+    pybind11::scoped_interpreter guard{};
+    pybind11::exec(
+        "import sys\n"
+        "vi = sys.version_info\n"
+        "sys.stdout.write('%i.%i.%i' % (vi.major, vi.minor, vi.micro));\n");
+    return 0;
+}
+    """, extension=".cc")
+    context.Result(ret[1] if ret[0] == 1 else 0)
+    if ret[0] == 0:
+        return None
+    else:
+        return tuple(map(int, ret[1].split(".")))
+
 # Platform-specific configuration.  Note again that we assume that all
 # builds under a given build root run on the same host platform.
 conf = Configure(main,
@@ -576,6 +603,7 @@ conf = Configure(main,
                  log_file = joinpath(build_root, 'scons_config.log'),
                  custom_tests = {
         'CheckMember' : CheckMember,
+        'CheckPythonLib' : CheckPythonLib,
         })
 
 # Check if we should compile a 64 bit binary on Mac OS X/Darwin
@@ -631,9 +659,6 @@ if main['USE_PYTHON']:
               main['PYTHON_CONFIG'])
 
     print("Info: Using Python config: %s" % (python_config, ))
-    if python_config != 'python3-config':
-        warning('python3-config could not be found.\n'
-                'Future releases of gem5 will drop support for python2.')
 
     py_includes = readCommand([python_config, '--includes'],
                               exception='').split()
@@ -691,6 +716,17 @@ main.Prepend(CPPPATH=Dir('ext/pybind11/include/'))
 marshal_env = main.Clone()
 marshal_env.Append(CCFLAGS='$MARSHAL_CCFLAGS_EXTRA')
 marshal_env.Append(LINKFLAGS='$MARSHAL_LDFLAGS_EXTRA')
+py_version = conf.CheckPythonLib()
+if not py_version:
+    error("Can't find a working Python installation")
+
+# Found a working Python installation. Check if it meets minimum
+# requirements.
+if py_version[0] < 3 or \
+   (py_version[0] == 3 and py_version[1] < 6):
+    error('Python version too old. Version 3.6 or newer is required.')
+elif py_version[0] > 3:
+    warning('Python version too new. Python 3 expected.')
 
 # On Solaris you need to use libsocket for socket ops
 if not conf.CheckLibWithHeader(None, 'sys/socket.h', 'C++', 'accept(0,0,0);'):

@@ -32,10 +32,12 @@
 void error(std::string msg);
 void assert(bool condition);
 Cycles zero_time();
+Cycles intToCycles(int c);
 NodeID intToID(int nodenum);
 int IDToInt(NodeID id);
 int addressToInt(Addr addr);
 Addr intToAddress(int addr);
+int addressOffset(Addr addr, Addr base);
 int max_tokens();
 Addr makeLineAddress(Addr addr);
 int getOffset(Addr addr);

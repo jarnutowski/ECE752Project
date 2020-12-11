@@ -95,6 +95,30 @@ class Base : public SimObject
      */
     const std::size_t sizeThreshold;
 
+    /**
+     * Degree of parallelization of the compression process. It is the
+     * number of chunks that can be processed in a cycle.
+     */
+    const Cycles compChunksPerCycle;
+
+    /**
+     * Extra latency added to compression due to packaging, shifting or
+     * other operations.
+     */
+    const Cycles compExtraLatency;
+
+    /**
+     * Degree of parallelization of the decompression process. It is the
+     * number of chunks that can be processed in a cycle.
+     */
+    const Cycles decompChunksPerCycle;
+
+    /**
+     * Extra latency added to decompression due to packaging, shifting or
+     * other operations.
+     */
+    const Cycles decompExtraLatency;
+
     struct BaseStats : public Stats::Group
     {
         const Base& compressor;
@@ -166,7 +190,7 @@ class Base : public SimObject
 
   public:
     typedef BaseCacheCompressorParams Params;
-    Base(const Params *p);
+    Base(const Params &p);
     virtual ~Base() = default;
 
     /**

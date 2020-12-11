@@ -51,12 +51,12 @@
 using namespace std;
 using m5::stl_helpers::operator<<;
 
-Switch::Switch(const Params *p)
-  : BasicRouter(p), perfectSwitch(m_id, this, p->virt_nets),
+Switch::Switch(const Params &p)
+  : BasicRouter(p), perfectSwitch(m_id, this, p.virt_nets),
     m_num_connected_buffers(0)
 {
-    m_port_buffers.reserve(p->port_buffers.size());
-    for (auto& buffer : p->port_buffers) {
+    m_port_buffers.reserve(p.port_buffers.size());
+    for (auto& buffer : p.port_buffers) {
         m_port_buffers.emplace_back(buffer);
     }
 }
@@ -80,7 +80,7 @@ Switch::addOutPort(const vector<MessageBuffer*>& out,
                    Cycles link_latency, int bw_multiplier)
 {
     // Create a throttle
-    throttles.emplace_back(m_id, m_network_ptr->params()->ruby_system,
+    throttles.emplace_back(m_id, m_network_ptr->params().ruby_system,
         throttles.size(), link_latency, bw_multiplier,
         m_network_ptr->getEndpointBandwidth(), this);
 
@@ -182,10 +182,4 @@ Switch::functionalWrite(Packet *pkt)
         num_functional_writes += m_port_buffers[i]->functionalWrite(pkt);
     }
     return num_functional_writes;
-}
-
-Switch *
-SwitchParams::create()
-{
-    return new Switch(this);
 }

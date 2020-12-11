@@ -49,15 +49,9 @@
 /**
  * ThermalReference
  */
-ThermalReference::ThermalReference(const Params *p)
-    : SimObject(p), _temperature(p->temperature), node(NULL)
+ThermalReference::ThermalReference(const Params &p)
+    : SimObject(p), _temperature(p.temperature), node(NULL)
 {
-}
-
-ThermalReference *
-ThermalReferenceParams::create()
-{
-    return new ThermalReference(this);
 }
 
 void
@@ -82,15 +76,9 @@ ThermalReference::getEquation(ThermalNode * n, unsigned nnodes,
 /**
  * ThermalResistor
  */
-ThermalResistor::ThermalResistor(const Params *p)
-    : SimObject(p), _resistance(p->resistance), node1(NULL), node2(NULL)
+ThermalResistor::ThermalResistor(const Params &p)
+    : SimObject(p), _resistance(p.resistance), node1(NULL), node2(NULL)
 {
-}
-
-ThermalResistor *
-ThermalResistorParams::create()
-{
-    return new ThermalResistor(this);
 }
 
 void
@@ -135,15 +123,9 @@ ThermalResistor::getEquation(ThermalNode * n, unsigned nnodes,
 /**
  * ThermalCapacitor
  */
-ThermalCapacitor::ThermalCapacitor(const Params *p)
-    : SimObject(p), _capacitance(p->capacitance), node1(NULL), node2(NULL)
+ThermalCapacitor::ThermalCapacitor(const Params &p)
+    : SimObject(p), _capacitance(p.capacitance), node1(NULL), node2(NULL)
 {
-}
-
-ThermalCapacitor *
-ThermalCapacitorParams::create()
-{
-    return new ThermalCapacitor(this);
 }
 
 void
@@ -191,15 +173,9 @@ ThermalCapacitor::getEquation(ThermalNode * n, unsigned nnodes,
 /**
  * ThermalModel
  */
-ThermalModel::ThermalModel(const Params *p)
-    : ClockedObject(p), stepEvent([this]{ doStep(); }, name()), _step(p->step)
+ThermalModel::ThermalModel(const Params &p)
+    : ClockedObject(p), stepEvent([this]{ doStep(); }, name()), _step(p.step)
 {
-}
-
-ThermalModel *
-ThermalModelParams::create()
-{
-    return new ThermalModel(this);
 }
 
 void

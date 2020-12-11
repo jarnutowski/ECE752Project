@@ -657,7 +657,7 @@ class ScalarBase : public DataWrap<Derived, ScalarInfoProxy>
 
   protected:
     /** The storage of this stat. */
-    char storage[sizeof(Storage)] __attribute__ ((aligned (8)));
+    M5_ALIGNED(8) char storage[sizeof(Storage)];
 
   protected:
     /**
@@ -812,8 +812,8 @@ class FunctorProxy : public ProxyInfo
  */
 template <class T>
 class FunctorProxy<T,
-    typename std::enable_if<std::is_constructible<std::function<Result()>,
-        const T &>::value>::type> : public ProxyInfo
+    typename std::enable_if_t<std::is_constructible<std::function<Result()>,
+        const T &>::value>> : public ProxyInfo
 {
   private:
     std::function<Result()> functor;
@@ -1878,7 +1878,7 @@ class DistBase : public DataWrap<Derived, DistInfoProxy>
 
   protected:
     /** The storage for this stat. */
-    char storage[sizeof(Storage)] __attribute__ ((aligned (8)));
+    M5_ALIGNED(8) char storage[sizeof(Storage)];
 
   protected:
     /**

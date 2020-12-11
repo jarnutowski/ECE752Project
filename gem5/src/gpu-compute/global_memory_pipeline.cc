@@ -43,11 +43,11 @@
 #include "gpu-compute/vector_register_file.hh"
 #include "gpu-compute/wavefront.hh"
 
-GlobalMemPipeline::GlobalMemPipeline(const ComputeUnitParams* p,
+GlobalMemPipeline::GlobalMemPipeline(const ComputeUnitParams &p,
                                      ComputeUnit &cu)
     : computeUnit(cu), _name(cu.name() + ".GlobalMemPipeline"),
-      gmQueueSize(p->global_mem_queue_size),
-      maxWaveRequests(p->max_wave_requests), inflightStores(0),
+      gmQueueSize(p.global_mem_queue_size),
+      maxWaveRequests(p.max_wave_requests), inflightStores(0),
       inflightLoads(0)
 {
 }
@@ -192,6 +192,10 @@ GlobalMemPipeline::exec()
         DPRINTF(GPUCoalescer, "initiateAcc for %s seqNum %d\n",
                 mp->disassemble(), mp->seqNum());
         mp->initiateAcc(mp);
+
+        if (mp->isStore() && mp->isGlobalSeg()) {
+            mp->wavefront()->decExpInstsIssued();
+        }
 
         if (((mp->isMemSync() && !mp->isEndOfKernel()) || !mp->isMemSync())) {
             /**

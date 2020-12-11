@@ -58,8 +58,7 @@ using namespace PowerISA;
 
 #define MODE2MASK(X) (1 << (X))
 
-TLB::TLB(const Params *p)
-    : BaseTLB(p), size(p->size), nlu(0)
+TLB::TLB(const Params &p) : BaseTLB(p), size(p.size), nlu(0)
 {
     table = new PowerISA::PTE[size];
     memset(table, 0, sizeof(PowerISA::PTE[size]));
@@ -278,10 +277,4 @@ TLB::index(bool advance)
         nextnlu();
 
     return *pte;
-}
-
-PowerISA::TLB *
-PowerTLBParams::create()
-{
-    return new PowerISA::TLB(this);
 }

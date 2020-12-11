@@ -52,7 +52,7 @@ namespace Minor
 
 Fetch1::Fetch1(const std::string &name_,
     MinorCPU &cpu_,
-    MinorCPUParams &params,
+    const MinorCPUParams &params,
     Latch<BranchData>::Output inp_,
     Latch<ForwardLineData>::Input out_,
     Latch<BranchData>::Output prediction_,
@@ -184,7 +184,7 @@ Fetch1::fetchLine(ThreadID tid)
     /* Submit the translation request.  The response will come
      *  through finish/markDelayed on this request as it bears
      *  the Translation interface */
-    cpu.threads[request->id.threadId]->itb->translateTiming(
+    cpu.threads[request->id.threadId]->mmu->translateTiming(
         request->request,
         cpu.getContext(request->id.threadId),
         request, BaseTLB::Execute);
@@ -388,7 +388,7 @@ void
 Fetch1::minorTraceResponseLine(const std::string &name,
     Fetch1::FetchRequestPtr response) const
 {
-    const RequestPtr &request M5_VAR_USED = response->request;
+    M5_VAR_USED const RequestPtr &request = response->request;
 
     if (response->packet && response->packet->isError()) {
         MINORLINE(this, "id=F;%s vaddr=0x%x fault=\"error packet\"\n",

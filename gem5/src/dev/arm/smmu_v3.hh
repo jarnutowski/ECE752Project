@@ -131,12 +131,16 @@ class SMMUv3 : public ClockedObject
     const Cycles walkLat;
 
     // Stats
-    Stats::Scalar steL1Fetches;
-    Stats::Scalar steFetches;
-    Stats::Scalar cdL1Fetches;
-    Stats::Scalar cdFetches;
-    Stats::Distribution translationTimeDist;
-    Stats::Distribution ptwTimeDist;
+    struct SMMUv3Stats : public Stats::Group
+    {
+        SMMUv3Stats(Stats::Group *parent);
+        Stats::Scalar steL1Fetches;
+        Stats::Scalar steFetches;
+        Stats::Scalar cdL1Fetches;
+        Stats::Scalar cdFetches;
+        Stats::Distribution translationTimeDist;
+        Stats::Distribution ptwTimeDist;
+    } stats;
 
     std::vector<SMMUv3DeviceInterface *> deviceInterfaces;
 
@@ -165,11 +169,10 @@ class SMMUv3 : public ClockedObject
     const PageTableOps *getPageTableOps(uint8_t trans_granule);
 
   public:
-    SMMUv3(SMMUv3Params *p);
+    SMMUv3(const SMMUv3Params &p);
     virtual ~SMMUv3() {}
 
     virtual void init() override;
-    virtual void regStats() override;
 
     Tick recvAtomic(PacketPtr pkt, PortID id);
     bool recvTimingReq(PacketPtr pkt, PortID id);

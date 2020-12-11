@@ -94,7 +94,7 @@ class CheckerCPU : public BaseCPU, public ExecContext
     void init() override;
 
     typedef CheckerCPUParams Params;
-    CheckerCPU(Params *p);
+    CheckerCPU(const Params &p);
     virtual ~CheckerCPU();
 
     void setSystem(System *system);
@@ -132,8 +132,7 @@ class CheckerCPU : public BaseCPU, public ExecContext
 
     ThreadContext *tc;
 
-    BaseTLB *itb;
-    BaseTLB *dtb;
+    BaseMMU *mmu;
 
     // ISAs like ARM can have multiple destination registers to check,
     // keep them all in a std::queue
@@ -153,8 +152,7 @@ class CheckerCPU : public BaseCPU, public ExecContext
     // Primary thread being run.
     SimpleThread *thread;
 
-    BaseTLB* getITBPtr() { return itb; }
-    BaseTLB* getDTBPtr() { return dtb; }
+    BaseMMU* getMMUPtr() { return mmu; }
 
     virtual Counter totalInsts() const override
     {
@@ -540,29 +538,21 @@ class CheckerCPU : public BaseCPU, public ExecContext
     void
     demapPage(Addr vaddr, uint64_t asn) override
     {
-        this->itb->demapPage(vaddr, asn);
-        this->dtb->demapPage(vaddr, asn);
+        mmu->demapPage(vaddr, asn);
     }
 
     // monitor/mwait funtions
     void armMonitor(Addr address) override { BaseCPU::armMonitor(0, address); }
     bool mwait(PacketPtr pkt) override { return BaseCPU::mwait(0, pkt); }
-    void mwaitAtomic(ThreadContext *tc) override
-    { return BaseCPU::mwaitAtomic(0, tc, thread->dtb); }
+
+    void
+    mwaitAtomic(ThreadContext *tc) override
+    {
+        return BaseCPU::mwaitAtomic(0, tc, thread->mmu);
+    }
+
     AddressMonitor *getAddrMonitor() override
     { return BaseCPU::getCpuAddrMonitor(0); }
-
-    void
-    demapInstPage(Addr vaddr, uint64_t asn)
-    {
-        this->itb->demapPage(vaddr, asn);
-    }
-
-    void
-    demapDataPage(Addr vaddr, uint64_t asn)
-    {
-        this->dtb->demapPage(vaddr, asn);
-    }
 
     /**
      * Helper function used to generate the request for a single fragment of a
@@ -587,12 +577,12 @@ class CheckerCPU : public BaseCPU, public ExecContext
 
     Fault readMem(Addr addr, uint8_t *data, unsigned size,
                   Request::Flags flags,
-                  const std::vector<bool>& byte_enable = std::vector<bool>())
+                  const std::vector<bool>& byte_enable)
         override;
 
     Fault writeMem(uint8_t *data, unsigned size, Addr addr,
                    Request::Flags flags, uint64_t *res,
-                   const std::vector<bool>& byte_enable = std::vector<bool>())
+                   const std::vector<bool>& byte_enable)
         override;
 
     Fault amoMem(Addr addr, uint8_t* data, unsigned size,
@@ -610,9 +600,6 @@ class CheckerCPU : public BaseCPU, public ExecContext
     /////////////////////////////////////////////////////
 
     void wakeup(ThreadID tid) override { }
-    // Assume that the normal CPU's call to syscall was successful.
-    // The checker's state would have already been updated by the syscall.
-    void syscall() override { }
 
     void
     handleError()
@@ -656,7 +643,7 @@ class Checker : public CheckerCPU
     typedef typename Impl::DynInstPtr DynInstPtr;
 
   public:
-    Checker(Params *p)
+    Checker(const Params &p)
         : CheckerCPU(p), updateThisCycle(false), unverifiedInst(NULL)
     { }
 

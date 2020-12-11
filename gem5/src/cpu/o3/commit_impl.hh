@@ -78,19 +78,19 @@ DefaultCommit<Impl>::processTrapEvent(ThreadID tid)
 }
 
 template <class Impl>
-DefaultCommit<Impl>::DefaultCommit(O3CPU *_cpu, DerivO3CPUParams *params)
-    : commitPolicy(params->smtCommitPolicy),
+DefaultCommit<Impl>::DefaultCommit(O3CPU *_cpu, const DerivO3CPUParams &params)
+    : commitPolicy(params.smtCommitPolicy),
       cpu(_cpu),
-      iewToCommitDelay(params->iewToCommitDelay),
-      commitToIEWDelay(params->commitToIEWDelay),
-      renameToROBDelay(params->renameToROBDelay),
-      fetchToCommitDelay(params->commitToFetchDelay),
-      renameWidth(params->renameWidth),
-      commitWidth(params->commitWidth),
-      numThreads(params->numThreads),
+      iewToCommitDelay(params.iewToCommitDelay),
+      commitToIEWDelay(params.commitToIEWDelay),
+      renameToROBDelay(params.renameToROBDelay),
+      fetchToCommitDelay(params.commitToFetchDelay),
+      renameWidth(params.renameWidth),
+      commitWidth(params.commitWidth),
+      numThreads(params.numThreads),
       drainPending(false),
       drainImminent(false),
-      trapLatency(params->trapLatency),
+      trapLatency(params.trapLatency),
       canHandleInterrupts(true),
       avoidQuiesceLiveLock(false),
       stats(_cpu, this)
@@ -701,7 +701,7 @@ DefaultCommit<Impl>::tick()
             // will be active.
             _nextStatus = Active;
 
-            const DynInstPtr &inst M5_VAR_USED = rob->readHeadInst(tid);
+            M5_VAR_USED const DynInstPtr &inst = rob->readHeadInst(tid);
 
             DPRINTF(Commit,"[tid:%i] Instruction [sn:%llu] PC %s is head of"
                     " ROB and ready to commit\n",
@@ -1196,7 +1196,7 @@ DefaultCommit<Impl>::commitHead(const DynInstPtr &head_inst, unsigned inst_num)
         // Make sure we are only trying to commit un-executed instructions we
         // think are possible.
         assert(head_inst->isNonSpeculative() || head_inst->isStoreConditional()
-               || head_inst->isMemBarrier() || head_inst->isWriteBarrier()
+               || head_inst->isReadBarrier() || head_inst->isWriteBarrier()
                || head_inst->isAtomic()
                || (head_inst->isLoad() && head_inst->strictlyOrdered()));
 
@@ -1231,11 +1231,6 @@ DefaultCommit<Impl>::commitHead(const DynInstPtr &head_inst, unsigned inst_num)
         }
 
         return false;
-    }
-
-    if (head_inst->isThreadSync()) {
-        // Not handled for now.
-        panic("Thread sync instructions are not handled yet.\n");
     }
 
     // Check if the instruction caused a fault.  If so, trap.
@@ -1467,7 +1462,7 @@ DefaultCommit<Impl>::updateComInstStats(const DynInstPtr &inst)
         }
     }
 
-    if (inst->isMemBarrier()) {
+    if (inst->isFullMemBarrier()) {
         stats.membars[tid]++;
     }
 

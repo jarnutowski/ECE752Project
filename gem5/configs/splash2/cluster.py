@@ -282,6 +282,8 @@ for cluster in clusters:
     for cpu in cluster.cpus:
         cpu.workload = root.workload
 
+system.workload = SEWorkload.init_compatible(root.workload.executable)
+
 # ----------------------
 # Run the simulation
 # ----------------------

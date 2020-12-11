@@ -68,7 +68,7 @@ class Platform;
 class Uart8250 : public Uart
 {
   protected:
-    uint8_t IER, DLAB, LCR, MCR;
+    uint8_t IER, LCR, MCR;
     Tick lastTxInt;
 
     void processIntrEvent(int intrBit);
@@ -79,12 +79,12 @@ class Uart8250 : public Uart
 
   public:
     typedef Uart8250Params Params;
-    const Params *
+    const Params &
     params() const
     {
-        return dynamic_cast<const Params *>(_params);
+        return dynamic_cast<const Params &>(_params);
     }
-    Uart8250(const Params *p);
+    Uart8250(const Params &p);
 
     Tick read(PacketPtr pkt) override;
     Tick write(PacketPtr pkt) override;

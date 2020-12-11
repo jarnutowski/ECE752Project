@@ -77,16 +77,15 @@ Trace::ExeTracerRecord::traceInst(const StaticInstPtr &inst, bool ran)
 
     Addr cur_pc = pc.instAddr();
     Loader::SymbolTable::const_iterator it;
+    ccprintf(outs, "%#x", cur_pc);
     if (Debug::ExecSymbol && (!FullSystem || !inUserMode(thread)) &&
             (it = Loader::debugSymbolTable.findNearest(cur_pc)) !=
                 Loader::debugSymbolTable.end()) {
         Addr delta = cur_pc - it->address;
         if (delta)
-            ccprintf(outs, "@%s+%d", it->name, delta);
+            ccprintf(outs, " @%s+%d", it->name, delta);
         else
-            ccprintf(outs, "@%s", it->name);
-    } else {
-        ccprintf(outs, "%#x", cur_pc);
+            ccprintf(outs, " @%s", it->name);
     }
 
     if (inst->isMicroop()) {
@@ -200,13 +199,3 @@ Trace::ExeTracerRecord::dump()
 }
 
 } // namespace Trace
-
-////////////////////////////////////////////////////////////////////////
-//
-//  ExeTracer Simulation Object
-//
-Trace::ExeTracer *
-ExeTracerParams::create()
-{
-    return new Trace::ExeTracer(this);
-}

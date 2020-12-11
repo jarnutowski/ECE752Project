@@ -54,13 +54,3 @@ Trace::IntelTraceRecord::dump()
 }
 
 } // namespace Trace
-
-////////////////////////////////////////////////////////////////////////
-//
-//  ExeTracer Simulation Object
-//
-Trace::IntelTrace *
-IntelTraceParams::create()
-{
-    return new Trace::IntelTrace(this);
-}

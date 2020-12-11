@@ -63,18 +63,18 @@
 namespace X86ISA
 {
 
-    GpuTLB::GpuTLB(const Params *p)
-        : ClockedObject(p), configAddress(0), size(p->size),
+    GpuTLB::GpuTLB(const Params &p)
+        : ClockedObject(p), configAddress(0), size(p.size),
           cleanupEvent([this]{ cleanup(); }, name(), false,
                        Event::Maximum_Pri),
           exitEvent([this]{ exitCallback(); }, name())
     {
-        assoc = p->assoc;
+        assoc = p.assoc;
         assert(assoc <= size);
         numSets = size/assoc;
-        allocationPolicy = p->allocationPolicy;
+        allocationPolicy = p.allocationPolicy;
         hasMemSidePort = false;
-        accessDistance = p->accessDistance;
+        accessDistance = p.accessDistance;
 
         tlb.assign(size, TlbEntry());
 
@@ -94,13 +94,13 @@ namespace X86ISA
          * @warning: the set-associative version assumes you have a
          * fixed page size of 4KB.
          * If the page size is greather than 4KB (as defined in the
-         * TheISA::PageBytes), then there are various issues w/ the current
+         * X86ISA::PageBytes), then there are various issues w/ the current
          * implementation (you'd have the same 8KB page being replicated in
          * different sets etc)
          */
         setMask = numSets - 1;
 
-        maxCoalescedReqs = p->maxOutstandingReqs;
+        maxCoalescedReqs = p.maxOutstandingReqs;
 
         // Do not allow maxCoalescedReqs to be more than the TLB associativity
         if (maxCoalescedReqs > assoc) {
@@ -109,18 +109,18 @@ namespace X86ISA
         }
 
         outstandingReqs = 0;
-        hitLatency = p->hitLatency;
-        missLatency1 = p->missLatency1;
-        missLatency2 = p->missLatency2;
+        hitLatency = p.hitLatency;
+        missLatency1 = p.missLatency1;
+        missLatency2 = p.missLatency2;
 
         // create the response ports based on the number of connected ports
-        for (size_t i = 0; i < p->port_cpu_side_ports_connection_count; ++i) {
+        for (size_t i = 0; i < p.port_cpu_side_ports_connection_count; ++i) {
             cpuSidePort.push_back(new CpuSidePort(csprintf("%s-port%d",
                                   name(), i), this, i));
         }
 
         // create the request ports based on the number of connected ports
-        for (size_t i = 0; i < p->port_mem_side_ports_connection_count; ++i) {
+        for (size_t i = 0; i < p.port_mem_side_ports_connection_count; ++i) {
             memSidePort.push_back(new MemSidePort(csprintf("%s-port%d",
                                   name(), i), this, i));
         }
@@ -164,7 +164,7 @@ namespace X86ISA
          * vpn holds the virtual page address
          * The least significant bits are simply masked
          */
-        int set = (vpn >> TheISA::PageShift) & setMask;
+        int set = (vpn >> PageShift) & setMask;
 
         if (!freeList[set].empty()) {
             newEntry = freeList[set].front();
@@ -184,7 +184,7 @@ namespace X86ISA
     GpuTLB::EntryList::iterator
     GpuTLB::lookupIt(Addr va, bool update_lru)
     {
-        int set = (va >> TheISA::PageShift) & setMask;
+        int set = (va >> PageShift) & setMask;
 
         if (FA) {
             assert(!set);
@@ -214,7 +214,7 @@ namespace X86ISA
     TlbEntry*
     GpuTLB::lookup(Addr va, bool update_lru)
     {
-        int set = (va >> TheISA::PageShift) & setMask;
+        int set = (va >> PageShift) & setMask;
 
         auto entry = lookupIt(va, update_lru);
 
@@ -266,7 +266,7 @@ namespace X86ISA
     GpuTLB::demapPage(Addr va, uint64_t asn)
     {
 
-        int set = (va >> TheISA::PageShift) & setMask;
+        int set = (va >> PageShift) & setMask;
         auto entry = lookupIt(va, false);
 
         if (entry != entryList[set].end()) {
@@ -754,7 +754,7 @@ namespace X86ISA
         assert(pkt->senderState);
 
         Addr virt_page_addr = roundDown(pkt->req->getVaddr(),
-                                        TheISA::PageBytes);
+                                        X86ISA::PageBytes);
 
         TranslationState *sender_state =
                 safe_cast<TranslationState*>(pkt->senderState);
@@ -1159,7 +1159,7 @@ namespace X86ISA
             local_entry = new_entry;
 
             if (allocationPolicy) {
-                Addr virt_page_addr = roundDown(vaddr, TheISA::PageBytes);
+                Addr virt_page_addr = roundDown(vaddr, X86ISA::PageBytes);
 
                 DPRINTF(GPUTLB, "allocating entry w/ addr %#x\n",
                         virt_page_addr);
@@ -1210,7 +1210,7 @@ namespace X86ISA
         bool update_stats = !sender_state->prefetch;
 
         Addr virt_page_addr = roundDown(pkt->req->getVaddr(),
-                                        TheISA::PageBytes);
+                                        X86ISA::PageBytes);
 
         if (update_stats)
             tlb->updatePageFootprint(virt_page_addr);
@@ -1339,7 +1339,7 @@ namespace X86ISA
     GpuTLB::MemSidePort::recvTimingResp(PacketPtr pkt)
     {
         Addr virt_page_addr = roundDown(pkt->req->getVaddr(),
-                                        TheISA::PageBytes);
+                                        X86ISA::PageBytes);
 
         DPRINTF(GPUTLB, "MemSidePort recvTiming for virt_page_addr %#x\n",
                 virt_page_addr);
@@ -1514,10 +1514,3 @@ namespace X86ISA
         TLBFootprint.clear();
     }
 } // namespace X86ISA
-
-X86ISA::GpuTLB*
-X86GPUTLBParams::create()
-{
-    return new X86ISA::GpuTLB(this);
-}
-

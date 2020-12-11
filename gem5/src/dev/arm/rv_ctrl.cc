@@ -45,7 +45,7 @@
 #include "sim/system.hh"
 #include "sim/voltage_domain.hh"
 
-RealViewCtrl::RealViewCtrl(Params *p)
+RealViewCtrl::RealViewCtrl(const Params &p)
     : BasicPioDevice(p, 0xD4), flags(0), scData(0)
 {
 }
@@ -59,10 +59,10 @@ RealViewCtrl::read(PacketPtr pkt)
 
     switch(daddr) {
       case ProcId0:
-        pkt->setLE(params()->proc_id0);
+        pkt->setLE(params().proc_id0);
         break;
       case ProcId1:
-        pkt->setLE(params()->proc_id1);
+        pkt->setLE(params().proc_id1);
         break;
       case Clock24:
         Tick clk;
@@ -102,7 +102,7 @@ RealViewCtrl::read(PacketPtr pkt)
         pkt->setLE<uint32_t>(flags);
         break;
       case IdReg:
-        pkt->setLE<uint32_t>(params()->idreg);
+        pkt->setLE<uint32_t>(params().idreg);
         break;
       case CfgStat:
         pkt->setLE<uint32_t>(1);
@@ -234,17 +234,17 @@ RealViewCtrl::registerDevice(DeviceFunc func, uint8_t site, uint8_t pos,
 }
 
 
-RealViewOsc::RealViewOsc(RealViewOscParams *p)
-    : ClockDomain(p, p->voltage_domain),
-      RealViewCtrl::Device(*p->parent, RealViewCtrl::FUNC_OSC,
-                           p->site, p->position, p->dcc, p->device)
+RealViewOsc::RealViewOsc(const RealViewOscParams &p)
+    : ClockDomain(p, p.voltage_domain),
+      RealViewCtrl::Device(*p.parent, RealViewCtrl::FUNC_OSC,
+                           p.site, p.position, p.dcc, p.device)
 {
-    if (SimClock::Float::s  / p->freq > UINT32_MAX) {
+    if (SimClock::Float::s  / p.freq > UINT32_MAX) {
         fatal("Oscillator frequency out of range: %f\n",
-            SimClock::Float::s  / p->freq / 1E6);
+            SimClock::Float::s  / p.freq / 1E6);
     }
 
-    _clockPeriod = p->freq;
+    _clockPeriod = p.freq;
 }
 
 void
@@ -312,22 +312,4 @@ RealViewTemperatureSensor::read() const
 
     // Report a dummy 25 degrees temperature
     return 25000000;
-}
-
-RealViewCtrl *
-RealViewCtrlParams::create()
-{
-    return new RealViewCtrl(this);
-}
-
-RealViewOsc *
-RealViewOscParams::create()
-{
-    return new RealViewOsc(this);
-}
-
-RealViewTemperatureSensor *
-RealViewTemperatureSensorParams::create()
-{
-    return new RealViewTemperatureSensor(this);
 }

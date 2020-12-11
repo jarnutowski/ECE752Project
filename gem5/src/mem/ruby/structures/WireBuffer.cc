@@ -54,7 +54,7 @@ operator<<(ostream& out, const WireBuffer& obj)
 // ****************************************************************
 
 // CONSTRUCTOR
-WireBuffer::WireBuffer(const Params *p)
+WireBuffer::WireBuffer(const Params &p)
     : SimObject(p)
 {
     m_msg_counter = 0;
@@ -140,10 +140,4 @@ WireBuffer::print(ostream& out) const
 void
 WireBuffer::wakeup()
 {
-}
-
-WireBuffer *
-RubyWireBufferParams::create()
-{
-    return new WireBuffer(this);
 }

@@ -58,10 +58,10 @@
 // DTB pointers.
 namespace TheISA
 {
-    class ISA;
     class Decoder;
 }
 class BaseCPU;
+class BaseMMU;
 class BaseTLB;
 class CheckerCPU;
 class Checkpoint;
@@ -88,12 +88,19 @@ class System;
 class ThreadContext : public PCEventScope
 {
   protected:
-    typedef TheISA::MachInst MachInst;
     using VecRegContainer = TheISA::VecRegContainer;
     using VecElem = TheISA::VecElem;
     using VecPredRegContainer = TheISA::VecPredRegContainer;
+    bool useForClone = false;
 
   public:
+
+    bool getUseForClone() { return useForClone; }
+
+    void setUseForClone(bool newUseForClone)
+    {
+        useForClone = newUseForClone;
+    }
 
     enum Status
     {
@@ -131,9 +138,7 @@ class ThreadContext : public PCEventScope
 
     virtual void setContextId(ContextID id) = 0;
 
-    virtual BaseTLB *getITBPtr() = 0;
-
-    virtual BaseTLB *getDTBPtr() = 0;
+    virtual BaseMMU *getMMUPtr() = 0;
 
     virtual CheckerCPU *getCheckerCpuPtr() = 0;
 
@@ -293,8 +298,6 @@ class ThreadContext : public PCEventScope
 
     // Same with st cond failures.
     virtual Counter readFuncExeInst() const = 0;
-
-    virtual void syscall() = 0;
 
     // This function exits the thread context in the CPU and returns
     // 1 if the CPU has no more active threads (meaning it's OK to exit);

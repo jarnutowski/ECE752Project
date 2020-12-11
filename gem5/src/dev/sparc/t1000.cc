@@ -41,8 +41,8 @@
 
 using namespace std;
 
-T1000::T1000(const Params *p)
-    : Platform(p), system(p->system)
+T1000::T1000(const Params &p)
+    : Platform(p), system(p.system)
 {}
 
 void
@@ -75,7 +75,6 @@ Addr
 T1000::pciToDma(Addr pciAddr) const
 {
     panic("Need implementation\n");
-    M5_DUMMY_RETURN
 }
 
 
@@ -83,25 +82,16 @@ Addr
 T1000::calcPciConfigAddr(int bus, int dev, int func)
 {
     panic("Need implementation\n");
-    M5_DUMMY_RETURN
 }
 
 Addr
 T1000::calcPciIOAddr(Addr addr)
 {
     panic("Need implementation\n");
-    M5_DUMMY_RETURN
 }
 
 Addr
 T1000::calcPciMemAddr(Addr addr)
 {
     panic("Need implementation\n");
-    M5_DUMMY_RETURN
-}
-
-T1000 *
-T1000Params::create()
-{
-    return new T1000(this);
 }

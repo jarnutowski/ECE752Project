@@ -156,7 +156,7 @@ class BaseTags : public ClockedObject
 
   public:
     typedef BaseTagsParams Params;
-    BaseTags(const Params *p);
+    BaseTags(const Params &p);
 
     /**
      * Destructor.
@@ -253,8 +253,8 @@ class BaseTags : public ClockedObject
         assert(blk);
         assert(blk->isValid());
 
-        stats.occupancies[blk->srcRequestorId]--;
-        stats.totalRefs += blk->refCount;
+        stats.occupancies[blk->getSrcRequestorId()]--;
+        stats.totalRefs += blk->getRefCount();
         stats.sampledRefs++;
 
         blk->invalidate();
@@ -307,6 +307,16 @@ class BaseTags : public ClockedObject
      * @param blk The block to update.
      */
     virtual void insertBlock(const PacketPtr pkt, CacheBlk *blk);
+
+    /**
+     * Move a block's metadata to another location decided by the replacement
+     * policy. It behaves as a swap, however, since the destination block
+     * should be invalid, the result is a move.
+     *
+     * @param src_blk The source block.
+     * @param dest_blk The destination block. Must be invalid.
+     */
+    virtual void moveBlock(CacheBlk *src_blk, CacheBlk *dest_blk);
 
     /**
      * Regenerate the block address.

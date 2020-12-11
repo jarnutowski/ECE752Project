@@ -451,10 +451,10 @@ public:
         typedef uint16_t Flags;
         typedef uint16_t Index;
 
-        struct Header {
+        struct M5_ATTR_PACKED Header {
             Flags flags;
             Index index;
-        } M5_ATTR_PACKED;
+        };
 
         VirtRing<T>(PortProxy &proxy, ByteOrder bo, uint16_t size) :
             header{0, 0}, ring(size), _proxy(proxy), _base(0), byteOrder(bo)
@@ -577,7 +577,7 @@ class VirtIODeviceBase : public SimObject
     EndBitUnion(DeviceStatus)
 
     typedef VirtIODeviceBaseParams Params;
-    VirtIODeviceBase(Params *params, DeviceId id, size_t config_size,
+    VirtIODeviceBase(const Params &params, DeviceId id, size_t config_size,
                      FeatureBits features);
     virtual ~VirtIODeviceBase();
 
@@ -877,7 +877,7 @@ class VirtIODeviceBase : public SimObject
 class VirtIODummyDevice : public VirtIODeviceBase
 {
   public:
-    VirtIODummyDevice(VirtIODummyDeviceParams *params);
+    VirtIODummyDevice(const VirtIODummyDeviceParams &params);
 
   protected:
     /** VirtIO device ID */

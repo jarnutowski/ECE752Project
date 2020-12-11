@@ -59,7 +59,7 @@ class ThermalDomain : public SimObject, public ThermalEntity
   public:
 
     typedef ThermalDomainParams Params;
-    ThermalDomain(const Params *p);
+    ThermalDomain(const Params &p);
 
     /**
      * Get the startup temperature.
@@ -93,7 +93,6 @@ class ThermalDomain : public SimObject, public ThermalEntity
       */
     void setSubSystem(SubSystem * ss);
 
-    void regStats() override;
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
 

@@ -43,14 +43,22 @@
 #include "sim/clocked_object.hh"
 #include "sim/sub_system.hh"
 
-PowerModelState::PowerModelState(const Params *p)
-    : SimObject(p), _temp(0), clocked_object(NULL)
+PowerModelState::PowerModelState(const Params &p)
+    : SimObject(p), _temp(0), clocked_object(NULL),
+      ADD_STAT(dynamicPower, "Dynamic power for this object (Watts)"),
+      ADD_STAT(staticPower, "Static power for this object (Watts)")
 {
+    dynamicPower
+      .method(this, &PowerModelState::getDynamicPower);
+    staticPower
+      .method(this, &PowerModelState::getStaticPower);
 }
 
-PowerModel::PowerModel(const Params *p)
-    : SimObject(p), states_pm(p->pm), subsystem(p->subsystem),
-      clocked_object(NULL), power_model_type(p->pm_type)
+PowerModel::PowerModel(const Params &p)
+    : SimObject(p), states_pm(p.pm), subsystem(p.subsystem),
+      clocked_object(NULL), power_model_type(p.pm_type),
+      ADD_STAT(dynamicPower, "Dynamic power for this power state"),
+      ADD_STAT(staticPower, "Static power for this power state")
 {
     panic_if(subsystem == NULL,
              "Subsystem is NULL! This is not acceptable for a PowerModel!\n");
@@ -58,8 +66,13 @@ PowerModel::PowerModel(const Params *p)
     // The temperature passed here will be overwritten, if there is
     // a thermal model present
     for (auto & pms: states_pm){
-        pms->setTemperature(p->ambient_temp);
+        pms->setTemperature(p.ambient_temp);
     }
+
+    dynamicPower
+      .method(this, &PowerModel::getDynamicPower);
+    staticPower
+      .method(this, &PowerModel::getStaticPower);
 
 }
 
@@ -85,12 +98,6 @@ PowerModel::regProbePoints()
     thermalListener.reset(new ThermalProbeListener (
         *this, this->subsystem->getProbeManager(), "thermalUpdate"
     ));
-}
-
-PowerModel*
-PowerModelParams::create()
-{
-    return new PowerModel(this);
 }
 
 double

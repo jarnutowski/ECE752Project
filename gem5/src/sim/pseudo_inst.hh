@@ -45,8 +45,8 @@
 
 class ThreadContext;
 
-#include "arch/pseudo_inst.hh"
 #include "arch/utility.hh"
+#include "base/bitfield.hh"
 #include "base/types.hh" // For Tick and Addr data types.
 #include "debug/PseudoInst.hh"
 #include "sim/guest_abi.hh"
@@ -112,6 +112,7 @@ void workbegin(ThreadContext *tc, uint64_t workid, uint64_t threadid);
 void workend(ThreadContext *tc, uint64_t workid, uint64_t threadid);
 void m5Syscall(ThreadContext *tc);
 void togglesync(ThreadContext *tc);
+void triggerWorkloadEvent(ThreadContext *tc);
 
 /**
  * Execute a decoded M5 pseudo instruction
@@ -239,18 +240,13 @@ pseudoInstWork(ThreadContext *tc, uint8_t func, uint64_t &result)
         warn("Unimplemented m5 op (%#x)\n", func);
         return false;
 
-      /* SE mode functions */
-      case M5OP_SE_SYSCALL:
-        invokeSimcall<ABI>(tc, m5Syscall);
-        return true;
-
-      case M5OP_SE_PAGE_FAULT:
-        invokeSimcall<ABI>(tc, TheISA::m5PageFault);
-        return true;
-
       /* dist-gem5 functions */
       case M5OP_DIST_TOGGLE_SYNC:
         invokeSimcall<ABI>(tc, togglesync);
+        return true;
+
+      case M5OP_WORKLOAD:
+        invokeSimcall<ABI>(tc, triggerWorkloadEvent);
         return true;
 
       default:

@@ -42,27 +42,27 @@
 #include "debug/Fetch.hh"
 #include "debug/Tage.hh"
 
-TAGEBase::TAGEBase(const TAGEBaseParams *p)
+TAGEBase::TAGEBase(const TAGEBaseParams &p)
    : SimObject(p),
-     logRatioBiModalHystEntries(p->logRatioBiModalHystEntries),
-     nHistoryTables(p->nHistoryTables),
-     tagTableCounterBits(p->tagTableCounterBits),
-     tagTableUBits(p->tagTableUBits),
-     histBufferSize(p->histBufferSize),
-     minHist(p->minHist),
-     maxHist(p->maxHist),
-     pathHistBits(p->pathHistBits),
-     tagTableTagWidths(p->tagTableTagWidths),
-     logTagTableSizes(p->logTagTableSizes),
-     threadHistory(p->numThreads),
-     logUResetPeriod(p->logUResetPeriod),
-     initialTCounterValue(p->initialTCounterValue),
-     numUseAltOnNa(p->numUseAltOnNa),
-     useAltOnNaBits(p->useAltOnNaBits),
-     maxNumAlloc(p->maxNumAlloc),
-     noSkip(p->noSkip),
-     speculativeHistUpdate(p->speculativeHistUpdate),
-     instShiftAmt(p->instShiftAmt),
+     logRatioBiModalHystEntries(p.logRatioBiModalHystEntries),
+     nHistoryTables(p.nHistoryTables),
+     tagTableCounterBits(p.tagTableCounterBits),
+     tagTableUBits(p.tagTableUBits),
+     histBufferSize(p.histBufferSize),
+     minHist(p.minHist),
+     maxHist(p.maxHist),
+     pathHistBits(p.pathHistBits),
+     tagTableTagWidths(p.tagTableTagWidths),
+     logTagTableSizes(p.logTagTableSizes),
+     threadHistory(p.numThreads),
+     logUResetPeriod(p.logUResetPeriod),
+     initialTCounterValue(p.initialTCounterValue),
+     numUseAltOnNa(p.numUseAltOnNa),
+     useAltOnNaBits(p.useAltOnNaBits),
+     maxNumAlloc(p.maxNumAlloc),
+     noSkip(p.noSkip),
+     speculativeHistUpdate(p.speculativeHistUpdate),
+     instShiftAmt(p.instShiftAmt),
      initialized(false),
      stats(this, nHistoryTables)
 {
@@ -789,10 +789,4 @@ TAGEBase::getSizeInBits() const {
     bits += pathHistBits;
     bits += logUResetPeriod;
     return bits;
-}
-
-TAGEBase*
-TAGEBaseParams::create()
-{
-    return new TAGEBase(this);
 }

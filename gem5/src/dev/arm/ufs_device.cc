@@ -72,14 +72,14 @@
 /**
  * Constructor and destructor functions of UFSHCM device
  */
-UFSHostDevice::UFSSCSIDevice::UFSSCSIDevice(const UFSHostDeviceParams* p,
+UFSHostDevice::UFSSCSIDevice::UFSSCSIDevice(const UFSHostDeviceParams &p,
                              uint32_t lun_id, const Callback &transfer_cb,
                              const Callback &read_cb):
     SimObject(p),
-    flashDisk(p->image[lun_id]),
-    flashDevice(p->internalflash[lun_id]),
-    blkSize(p->img_blk_size),
-    lunAvail(p->image.size()),
+    flashDisk(p.image[lun_id]),
+    flashDevice(p.internalflash[lun_id]),
+    blkSize(p.img_blk_size),
+    lunAvail(p.image.size()),
     diskSize(flashDisk->size()),
     capacityLower((diskSize - 1) & 0xffffffff),
     capacityUpper((diskSize - SectorSize) >> 32),
@@ -712,15 +712,15 @@ UFSHostDevice::UFSSCSIDevice::writeFlash(uint8_t* writeaddr, uint64_t offset,
  * Constructor for the UFS Host device
  */
 
-UFSHostDevice::UFSHostDevice(const UFSHostDeviceParams* p) :
+UFSHostDevice::UFSHostDevice(const UFSHostDeviceParams &p) :
     DmaDevice(p),
-    pioAddr(p->pio_addr),
+    pioAddr(p.pio_addr),
     pioSize(0x0FFF),
-    pioDelay(p->pio_latency),
-    intNum(p->int_num),
-    gic(p->gic),
-    lunAvail(p->image.size()),
-    UFSSlots(p->ufs_slots - 1),
+    pioDelay(p.pio_latency),
+    intNum(p.int_num),
+    gic(p.gic),
+    lunAvail(p.image.size()),
+    UFSSlots(p.ufs_slots - 1),
     readPendingNum(0),
     writePendingNum(0),
     activeDoorbells(0),
@@ -729,6 +729,7 @@ UFSHostDevice::UFSHostDevice(const UFSHostDeviceParams* p) :
     transferTrack(0),
     taskCommandTrack(0),
     idlePhaseStart(0),
+    stats(this),
     SCSIResumeEvent([this]{ SCSIStart(); }, name()),
     UTPEvent([this]{ finalUTP(); }, name())
 {
@@ -752,127 +753,97 @@ UFSHostDevice::UFSHostDevice(const UFSHostDeviceParams* p) :
     setValues();
 }
 
-/**
- * Create the parameters of this device
- */
-
-UFSHostDevice*
-UFSHostDeviceParams::create()
+UFSHostDevice::
+UFSHostDeviceStats::UFSHostDeviceStats(UFSHostDevice *parent)
+    : Stats::Group(parent, "UFSDiskHost"),
+      ADD_STAT(currentSCSIQueue,
+               "Most up to date length of the command queue"),
+      ADD_STAT(currentReadSSDQueue,
+               "Most up to date length of the read SSD queue"),
+      ADD_STAT(currentWriteSSDQueue,
+               "Most up to date length of the write SSD queue"),
+      /** Amount of data read/written */
+      ADD_STAT(totalReadSSD, "Number of bytes read from SSD"),
+      ADD_STAT(totalWrittenSSD, "Number of bytes written to SSD"),
+      ADD_STAT(totalReadDiskTransactions,"Number of transactions from disk"),
+      ADD_STAT(totalWriteDiskTransactions, "Number of transactions to disk"),
+      ADD_STAT(totalReadUFSTransactions, "Number of transactions from device"),
+      ADD_STAT(totalWriteUFSTransactions, "Number of transactions to device"),
+      /** Average bandwidth for reads and writes */
+      ADD_STAT(averageReadSSDBW, "Average read bandwidth (bytes/s)",
+               totalReadSSD / simSeconds),
+      ADD_STAT(averageWriteSSDBW, "Average write bandwidth (bytes/s)",
+               totalWrittenSSD / simSeconds),
+      ADD_STAT(averageSCSIQueue, "Average command queue length"),
+      ADD_STAT(averageReadSSDQueue, "Average read queue length"),
+      ADD_STAT(averageWriteSSDQueue, "Average write queue length"),
+      /** Number of doorbells rung*/
+      ADD_STAT(curDoorbell, "Most up to date number of doorbells used",
+               parent->activeDoorbells),
+      ADD_STAT(maxDoorbell, "Maximum number of doorbells utilized"),
+      ADD_STAT(averageDoorbell, "Average number of Doorbells used"),
+      /** Latency*/
+      ADD_STAT(transactionLatency, "Histogram of transaction times"),
+      ADD_STAT(idleTimes, "Histogram of idle times")
 {
-    return new UFSHostDevice(this);
-}
-
-
-void
-UFSHostDevice::regStats()
-{
-    DmaDevice::regStats();
-
     using namespace Stats;
-
-    std::string UFSHost_name = name() + ".UFSDiskHost";
 
     // Register the stats
     /** Queue lengths */
-    stats.currentSCSIQueue
-        .name(UFSHost_name + ".currentSCSIQueue")
-        .desc("Most up to date length of the command queue")
+    currentSCSIQueue
         .flags(none);
-    stats.currentReadSSDQueue
-        .name(UFSHost_name + ".currentReadSSDQueue")
-        .desc("Most up to date length of the read SSD queue")
+    currentReadSSDQueue
         .flags(none);
-    stats.currentWriteSSDQueue
-        .name(UFSHost_name + ".currentWriteSSDQueue")
-        .desc("Most up to date length of the write SSD queue")
+    currentWriteSSDQueue
         .flags(none);
 
     /** Amount of data read/written */
-    stats.totalReadSSD
-        .name(UFSHost_name + ".totalReadSSD")
-        .desc("Number of bytes read from SSD")
+    totalReadSSD
         .flags(none);
 
-    stats.totalWrittenSSD
-        .name(UFSHost_name + ".totalWrittenSSD")
-        .desc("Number of bytes written to SSD")
+    totalWrittenSSD
         .flags(none);
 
-    stats.totalReadDiskTransactions
-        .name(UFSHost_name + ".totalReadDiskTransactions")
-        .desc("Number of transactions from disk")
+    totalReadDiskTransactions
         .flags(none);
-    stats.totalWriteDiskTransactions
-        .name(UFSHost_name + ".totalWriteDiskTransactions")
-        .desc("Number of transactions to disk")
+    totalWriteDiskTransactions
         .flags(none);
-    stats.totalReadUFSTransactions
-        .name(UFSHost_name + ".totalReadUFSTransactions")
-        .desc("Number of transactions from device")
+    totalReadUFSTransactions
         .flags(none);
-    stats.totalWriteUFSTransactions
-        .name(UFSHost_name + ".totalWriteUFSTransactions")
-        .desc("Number of transactions to device")
+    totalWriteUFSTransactions
         .flags(none);
 
     /** Average bandwidth for reads and writes */
-    stats.averageReadSSDBW
-        .name(UFSHost_name + ".averageReadSSDBandwidth")
-        .desc("Average read bandwidth (bytes/s)")
+    averageReadSSDBW
         .flags(nozero);
 
-    stats.averageReadSSDBW = stats.totalReadSSD / simSeconds;
-
-    stats.averageWriteSSDBW
-        .name(UFSHost_name + ".averageWriteSSDBandwidth")
-        .desc("Average write bandwidth (bytes/s)")
+    averageWriteSSDBW
         .flags(nozero);
 
-    stats.averageWriteSSDBW = stats.totalWrittenSSD / simSeconds;
-
-    stats.averageSCSIQueue
-        .name(UFSHost_name + ".averageSCSIQueueLength")
-        .desc("Average command queue length")
+    averageSCSIQueue
         .flags(nozero);
-    stats.averageReadSSDQueue
-        .name(UFSHost_name + ".averageReadSSDQueueLength")
-        .desc("Average read queue length")
+    averageReadSSDQueue
         .flags(nozero);
-    stats.averageWriteSSDQueue
-        .name(UFSHost_name + ".averageWriteSSDQueueLength")
-        .desc("Average write queue length")
+    averageWriteSSDQueue
         .flags(nozero);
 
     /** Number of doorbells rung*/
-    stats.curDoorbell
-        .name(UFSHost_name + ".curDoorbell")
-        .desc("Most up to date number of doorbells used")
+    curDoorbell
         .flags(none);
 
-    stats.curDoorbell = activeDoorbells;
-
-    stats.maxDoorbell
-        .name(UFSHost_name + ".maxDoorbell")
-        .desc("Maximum number of doorbells utilized")
+    maxDoorbell
         .flags(none);
-    stats.averageDoorbell
-        .name(UFSHost_name + ".averageDoorbell")
-        .desc("Average number of Doorbells used")
+    averageDoorbell
         .flags(nozero);
 
     /** Latency*/
-    stats.transactionLatency
+    transactionLatency
         .init(100)
-        .name(UFSHost_name + ".transactionLatency")
-        .desc("Histogram of transaction times")
         .flags(pdf);
 
-    stats.idleTimes
+    idleTimes
         .init(100)
-        .name(UFSHost_name + ".idlePeriods")
-        .desc("Histogram of idle times")
         .flags(pdf);
-
 }
 
 /**

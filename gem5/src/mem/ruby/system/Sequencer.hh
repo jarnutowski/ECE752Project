@@ -81,7 +81,7 @@ class Sequencer : public RubyPort
 {
   public:
     typedef RubySequencerParams Params;
-    Sequencer(const Params *);
+    Sequencer(const Params &);
     ~Sequencer();
 
     /**
@@ -103,7 +103,15 @@ class Sequencer : public RubyPort
                        const MachineType mach = MachineType_NUM,
                        const Cycles initialRequestTime = Cycles(0),
                        const Cycles forwardRequestTime = Cycles(0),
-                       const Cycles firstResponseTime = Cycles(0));
+                       const Cycles firstResponseTime = Cycles(0),
+                       const bool noCoales = false);
+
+    // Write callback that prevents coalescing
+    void writeUniqueCallback(Addr address, DataBlock& data)
+    {
+        writeCallback(address, data, true, MachineType_NUM, Cycles(0),
+                      Cycles(0), Cycles(0), true);
+    }
 
     void readCallback(Addr address,
                       DataBlock& data,
@@ -212,7 +220,6 @@ class Sequencer : public RubyPort
     int m_max_outstanding_requests;
 
     CacheMemory* m_dataCache_ptr;
-    CacheMemory* m_instCache_ptr;
 
     // The cache access latency for top-level caches (L0/L1). These are
     // currently assessed at the beginning of each memory access through the
