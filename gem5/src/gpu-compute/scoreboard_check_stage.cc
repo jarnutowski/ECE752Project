@@ -87,8 +87,8 @@ ScoreboardCheckStage::ready(Wavefront *w, nonrdytype_e *rdyStatus,
     // instruction should be blocked until waitCnts are satisfied.
     if (w->getStatus() == Wavefront::S_WAITCNT) {
         if (!w->waitCntsSatisfied()) {
-            *rdyStatus = NRDY_WAIT_CNT;
-            return false;
+            //*rdyStatus = NRDY_WAIT_CNT;
+            //return false;
         }
     }
 

@@ -31,8 +31,6 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "gpu-compute/compute_unit.hh"
-
 #include <limits>
 
 #include "arch/x86/isa_traits.hh"
@@ -47,6 +45,7 @@
 #include "debug/GPURename.hh"
 #include "debug/GPUSync.hh"
 #include "debug/GPUTLB.hh"
+#include "gpu-compute/compute_unit.hh"
 #include "gpu-compute/dispatcher.hh"
 #include "gpu-compute/gpu_dyn_inst.hh"
 #include "gpu-compute/gpu_static_inst.hh"
@@ -398,6 +397,19 @@ ComputeUnit::doInvalidate(RequestPtr req, int kernId){
 void
 ComputeUnit::doFlush(GPUDynInstPtr gpuDynInst) {
     injectGlobalMemFence(gpuDynInst, true);
+}
+
+// reseting SIMD register pools
+// I couldn't think of any other place and
+// I think it is needed in my implementation
+void
+ComputeUnit::resetRegisterPool()
+{
+    for (int i=0; i<numVectorALUs; i++)
+    {
+        registerManager->vrfPoolMgrs[i]->resetRegion(numVecRegsPerSimd);
+        registerManager->srfPoolMgrs[i]->resetRegion(numScalarRegsPerSimd);
+    }
 }
 
 void

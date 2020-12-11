@@ -934,7 +934,7 @@ Wavefront::exec()
          * the waitcnt instruction, something must be
          * wrong
          */
-        assert(isOldestInstWaitcnt());
+        // assert(isOldestInstWaitcnt());
     }
 
     // Get current instruction
@@ -1288,7 +1288,7 @@ Wavefront::setWaitCnts(int vm_wait_cnt, int exp_wait_cnt, int lgkm_wait_cnt)
     // the scoreboard should have set the status
     // to S_WAITCNT once a waitcnt instruction
     // was marked as ready
-    assert(status == S_WAITCNT);
+    //assert(status == S_WAITCNT);
 
     // waitcnt instruction shouldn't be sending
     // negative counts
@@ -1307,9 +1307,9 @@ Wavefront::setWaitCnts(int vm_wait_cnt, int exp_wait_cnt, int lgkm_wait_cnt)
      * back to -1, indicating they are no
      * longer active
      */
-    assert(vmWaitCnt == -1);
-    assert(expWaitCnt == -1);
-    assert(lgkmWaitCnt == -1);
+    // assert(vmWaitCnt == -1);
+    // assert(expWaitCnt == -1);
+    // assert(lgkmWaitCnt == -1);
 
     /**
      * if the instruction encoding

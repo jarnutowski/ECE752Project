@@ -58,7 +58,7 @@ bool
 VectorRegisterFile::operandsReady(Wavefront *w, GPUDynInstPtr ii) const
 {
     for (int i = 0; i < ii->getNumOperands(); ++i) {
-        if (ii->isVectorRegister(i) && ii->isSrcOperand(i)) {
+        if (ii->isVectorRegister(i) && (ii->isSrcOperand(i) || ii->isDstOperand(i))) {
             int vgprIdx = ii->getRegisterIndex(i, ii);
 
             // determine number of registers
@@ -69,6 +69,8 @@ VectorRegisterFile::operandsReady(Wavefront *w, GPUDynInstPtr ii) const
                     ->mapVgpr(w, vgprIdx + j);
                 if (regBusy(pVgpr)) {
                     if (ii->isDstOperand(i)) {
+                        DPRINTF(GPUVRF, "WAX stall: WV[%d]: %s: physReg[%d]\n",
+                            w->wfDynId, ii->disassemble(), pVgpr);
                         w->numTimesBlockedDueWAXDependencies++;
                     } else if (ii->isSrcOperand(i)) {
                         DPRINTF(GPUVRF, "RAW stall: WV[%d]: %s: physReg[%d]\n",
@@ -110,10 +112,10 @@ VectorRegisterFile::scheduleWriteOperands(Wavefront *w, GPUDynInstPtr ii)
                      * packets, and therefore it will never free its dest
                      * reg(s).
                      */
-                    if (!ii->isLoad() || (ii->isLoad()
-                        && ii->exec_mask.any())) {
+                    // if (!ii->isLoad() || (ii->isLoad()
+                    //    && ii->exec_mask.any())) {
                         markReg(physReg, true);
-                    }
+                    // }
                 }
             }
         }

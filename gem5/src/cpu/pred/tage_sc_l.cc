@@ -458,3 +458,9 @@ TAGE_SC_L::update(ThreadID tid, Addr branch_pc, bool taken, void *bp_history,
 
     delete bi;
 }
+
+void
+TAGE_SC_L::regStats()
+{
+    LTAGE::regStats();
+}
