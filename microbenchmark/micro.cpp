@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
 #endif
 
 	const unsigned blocks = 1;
-	const unsigned threadsPerBlock = 256;
+	const unsigned threadsPerBlock = 1;
 
 	printf ("info: launch 'simple_test' kernel\n");
 #ifdef DGPU
