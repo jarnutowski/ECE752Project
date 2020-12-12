@@ -4,8 +4,9 @@ FROM ubuntu:16.04
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common
 
-# Ubuntu 16.04 does not have a python package new enough for gem5, use a PPA
-RUN add-apt-repository ppa:deadsnakes/ppa && apt-get update
+# Ubuntu 16.04 does not have a python package or g++ new enough for gem5, use a PPA
+RUN add-apt-repository ppa:deadsnakes/ppa \
+    && add-apt-repository ppa:ubuntu-toolchain-r/test && apt-get update
 
 # Should be minimal needed packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,6 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc-multilib \
     g++-multilib \
+    gcc-9 \
+    g++-9 \
+    gcc-9-multilib \
+    g++-9-multilib \
     git \
     ca-certificates \
     m4 \
@@ -44,6 +49,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Use python 3.9 by default
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
+
+# Use gcc/g++ 10 by default
+RUN update-alternatives --install \
+    /usr/bin/g++ g++ /usr/bin/g++-9 100
+RUN update-alternatives --install \
+    /usr/bin/gcc gcc /usr/bin/gcc-9 100
+RUN update-alternatives --install \
+    /usr/bin/c++ c++ /usr/bin/g++-9 100
+RUN update-alternatives --install \
+    /usr/bin/cc cc /usr/bin/gcc-9 100
 
 # Setuptools is needed for cmake for ROCm build. Install using pip.
 # Instructions to install PIP from https://pypi.org/project/pip/
